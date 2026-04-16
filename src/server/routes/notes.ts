@@ -1,7 +1,9 @@
 import type { NoteState } from "@shared/types";
 import { Router } from "express";
 import pool from "../db/pool";
+import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
+import { type AuthenticatedRequest, requireAuth } from "../middleware/requireAuth";
 
 export const noteRouter = Router();
 
@@ -106,5 +108,56 @@ noteRouter.delete("/:id", async (req, res) => {
     res.status(204).send();
   } catch (_err) {
     res.status(500).json({ error: "Failed to delete note" });
+  }
+});
+
+// Bulk import notes (requires auth + jar owner)
+noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { jarId, texts } = req.body;
+    if (!jarId || !Array.isArray(texts)) {
+      res.status(400).json({ error: "jarId and texts array are required" });
+      return;
+    }
+    const jar = await jarQueries.getJarById(pool, jarId);
+    if (!jar) {
+      res.status(404).json({ error: "Jar not found" });
+      return;
+    }
+    if (jar.ownerId !== req.user?.id) {
+      res.status(403).json({ error: "Only the jar owner can import notes" });
+      return;
+    }
+    const count = await noteQueries.bulkCreateNotes(pool, jarId, texts);
+    res.status(201).json({ imported: count });
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to import notes" });
+  }
+});
+
+// Export notes as JSON (public)
+noteRouter.get("/export", async (req, res) => {
+  try {
+    const jarId = req.query.jarId as string;
+    const format = (req.query.format as string) ?? "json";
+    if (!jarId) {
+      res.status(400).json({ error: "jarId query parameter is required" });
+      return;
+    }
+    const notes = await noteQueries.listNotesByJar(pool, jarId);
+
+    if (format === "csv") {
+      const header = "text,url,style,state";
+      const rows = notes.map(
+        (n) => `"${n.text.replace(/"/g, '""')}","${n.url ?? ""}","${n.style}","${n.state}"`,
+      );
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=notes.csv");
+      res.send([header, ...rows].join("\n"));
+    } else {
+      res.json(notes);
+    }
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to export notes" });
   }
 });

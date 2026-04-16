@@ -144,6 +144,31 @@ export async function countNotesByState(
   return rows[0].count;
 }
 
+export async function bulkCreateNotes(
+  pool: pg.Pool,
+  jarId: string,
+  texts: string[],
+  style: NoteStyle = "sticky",
+): Promise<number> {
+  const filtered = texts.map((t) => t.trim()).filter((t) => t.length > 0);
+  if (filtered.length === 0) return 0;
+
+  const values: unknown[] = [];
+  const placeholders: string[] = [];
+  let paramIndex = 1;
+
+  for (const text of filtered) {
+    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+    values.push(jarId, text, style);
+  }
+
+  await pool.query(
+    `INSERT INTO notes (jar_id, text, style) VALUES ${placeholders.join(", ")}`,
+    values,
+  );
+  return filtered.length;
+}
+
 export async function deleteNote(pool: pg.Pool, noteId: string): Promise<boolean> {
   const { rowCount } = await pool.query("DELETE FROM notes WHERE id = $1", [noteId]);
   return (rowCount ?? 0) > 0;
