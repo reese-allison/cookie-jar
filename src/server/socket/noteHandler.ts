@@ -7,6 +7,14 @@ import type { TypedServer } from "./server";
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+function requireContributor(ctx: SocketContext, socket: TypedSocket): boolean {
+  if (!ctx.isAuthenticated || ctx.role === "viewer") {
+    socket.emit("room:error", "Sign in to participate");
+    return false;
+  }
+  return true;
+}
+
 export function registerNoteHandlers(
   io: TypedServer,
   socket: TypedSocket,
@@ -14,12 +22,14 @@ export function registerNoteHandlers(
 ): void {
   socket.on("note:add", async (noteInput) => {
     if (!ctx.roomId || !ctx.jarId) return;
+    if (!requireContributor(ctx, socket)) return;
 
     const note = await noteQueries.createNote(pool, {
       jarId: ctx.jarId,
       text: noteInput.text,
       url: noteInput.url,
       style: noteInput.style ?? "sticky",
+      authorId: ctx.userId ?? undefined,
     });
 
     const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
@@ -28,6 +38,7 @@ export function registerNoteHandlers(
 
   socket.on("note:pull", async () => {
     if (!ctx.roomId || !ctx.jarId) return;
+    if (!requireContributor(ctx, socket)) return;
 
     const pulledBy = ctx.displayName ?? ctx.memberId ?? socket.id;
     const note = await noteQueries.pullRandomNote(pool, ctx.jarId, pulledBy);
@@ -39,10 +50,8 @@ export function registerNoteHandlers(
     const isPrivate = ctx.jarConfig?.pullVisibility === "private";
 
     if (isPrivate) {
-      // Private mode: only the puller sees the note content, others get updated counts
       socket.emit("note:pulled", note, pulledBy);
 
-      // Broadcast updated pull counts to everyone else
       const pullCounts = await noteQueries.getPullCounts(pool, ctx.jarId);
       socket.to(ctx.roomId).emit("note:state", {
         inJarCount: await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
@@ -50,13 +59,13 @@ export function registerNoteHandlers(
         pullCounts,
       });
     } else {
-      // Shared mode: everyone sees the pulled note
       io.to(ctx.roomId).emit("note:pulled", note, pulledBy);
     }
   });
 
   socket.on("note:discard", async (noteId) => {
     if (!ctx.roomId) return;
+    if (!requireContributor(ctx, socket)) return;
 
     const updated = await noteQueries.updateNoteState(pool, noteId, "discarded");
     if (!updated) return;
@@ -66,6 +75,7 @@ export function registerNoteHandlers(
 
   socket.on("note:return", async (noteId) => {
     if (!ctx.roomId || !ctx.jarId) return;
+    if (!requireContributor(ctx, socket)) return;
 
     const updated = await noteQueries.updateNoteState(pool, noteId, "in_jar");
     if (!updated) return;

@@ -60,6 +60,31 @@ function buildRoomState(dbRoom: DbRoom, roomId: string): Room {
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+function determineRole(ctx: SocketContext, jarOwnerId?: string): RoomMember["role"] {
+  if (ctx.isAuthenticated && ctx.userId === jarOwnerId) return "owner";
+  if (ctx.isAuthenticated) return "contributor";
+  return "viewer";
+}
+
+async function sendNoteState(
+  socket: TypedSocket,
+  jarId: string,
+  isPrivate: boolean,
+): Promise<void> {
+  const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
+  if (isPrivate) {
+    const [allPulled, pullCounts] = await Promise.all([
+      noteQueries.listNotesByJar(pool, jarId, "pulled"),
+      noteQueries.getPullCounts(pool, jarId),
+    ]);
+    const myNotes = allPulled.filter((n) => n.pulledBy === socket.id);
+    socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts });
+  } else {
+    const pulledNotes = await noteQueries.listNotesByJar(pool, jarId, "pulled");
+    socket.emit("note:state", { inJarCount, pulledNotes });
+  }
+}
+
 export function registerRoomHandlers(
   io: TypedServer,
   socket: TypedSocket,
@@ -88,50 +113,30 @@ export function registerRoomHandlers(
       return;
     }
 
+    const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
+    const jarConfig = jar?.config ?? null;
+    const role = determineRole(ctx, jar?.ownerId);
+    const effectiveName = ctx.displayName ?? displayName;
+
     const member: RoomMember = {
       id: socket.id,
-      displayName,
-      role: "contributor",
+      displayName: effectiveName,
+      role,
       color: assignColor(roomId),
       connectedAt: new Date().toISOString(),
     };
 
     members.set(socket.id, member);
-
-    // Load jar config for visibility settings
-    const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
-    const jarConfig = jar?.config ?? null;
-
     ctx.roomId = roomId;
     ctx.jarId = dbRoom.jarId;
     ctx.jarConfig = jarConfig;
     ctx.memberId = socket.id;
-    ctx.displayName = displayName;
+    ctx.displayName = effectiveName;
+    ctx.role = role;
 
     await socket.join(roomId);
-
-    // Send room state
     socket.emit("room:state", buildRoomState(dbRoom, roomId));
-
-    // Send current note state based on pull visibility
-    const inJarCount = await noteQueries.countNotesByState(pool, dbRoom.jarId, "in_jar");
-    const isPrivate = jarConfig?.pullVisibility === "private";
-
-    if (isPrivate) {
-      // Private mode: only show this user's pulled notes + counts for everyone
-      const [allPulled, pullCounts] = await Promise.all([
-        noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled"),
-        noteQueries.getPullCounts(pool, dbRoom.jarId),
-      ]);
-      const myNotes = allPulled.filter((n) => n.pulledBy === socket.id);
-      socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts });
-    } else {
-      // Shared mode: show all pulled notes
-      const pulledNotes = await noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled");
-      socket.emit("note:state", { inJarCount, pulledNotes });
-    }
-
-    // Broadcast join to others
+    await sendNoteState(socket, dbRoom.jarId, jarConfig?.pullVisibility === "private");
     socket.to(roomId).emit("room:member_joined", member);
   });
 
@@ -148,12 +153,20 @@ export function registerRoomHandlers(
 
   socket.on("room:lock", async () => {
     if (!ctx.roomId) return;
+    if (ctx.role !== "owner") {
+      socket.emit("room:error", "Only the room owner can lock the room");
+      return;
+    }
     await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
     io.to(ctx.roomId).emit("room:locked");
   });
 
   socket.on("room:unlock", async () => {
     if (!ctx.roomId) return;
+    if (ctx.role !== "owner") {
+      socket.emit("room:error", "Only the room owner can unlock the room");
+      return;
+    }
     await roomQueries.updateRoomState(pool, ctx.roomId, "open");
     io.to(ctx.roomId).emit("room:unlocked");
   });

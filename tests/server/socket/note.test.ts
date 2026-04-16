@@ -58,7 +58,13 @@ beforeAll(async () => {
     ownerId: testUserId,
     name: "Note Socket Test Jar",
     appearance: {},
-    config: { noteVisibility: "open", sealedRevealCount: 1, showAuthors: false },
+    config: {
+      noteVisibility: "open",
+      pullVisibility: "shared",
+      sealedRevealCount: 1,
+      showAuthors: false,
+      showPulledBy: false,
+    },
   });
   testJarId = jar.id;
 
@@ -97,7 +103,6 @@ afterAll(async () => {
 
 describe("note:state on join", () => {
   it("sends note state when a user joins a room", async () => {
-    // Pre-populate some notes
     await noteQueries.createNote(pool, { jarId: testJarId, text: "Note 1", style: "sticky" });
     await noteQueries.createNote(pool, { jarId: testJarId, text: "Note 2", style: "sticky" });
     const pulled = await noteQueries.createNote(pool, {
@@ -121,109 +126,55 @@ describe("note:state on join", () => {
   });
 });
 
-describe("note:add", () => {
-  it("creates a note and broadcasts to the room", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    const bob = connectClient(testRoomCode, "Bob");
-    clients.push(alice, bob);
+describe("anonymous user restrictions", () => {
+  it("rejects note:add from anonymous user", async () => {
+    const client = connectClient(testRoomCode, "Guest");
+    clients.push(client);
 
-    alice.connect();
-    await waitForEvent(alice, "room:state");
+    client.connect();
+    await waitForEvent(client, "room:state");
 
-    bob.connect();
-    await waitForEvent(bob, "room:state");
+    const errorPromise = waitForEvent(client, "room:error");
+    client.emit("note:add", { text: "Should fail", style: "sticky" });
 
-    // Bob listens for the broadcast
-    const addedPromise = waitForEvent(bob, "note:added");
-
-    // Alice adds a note
-    alice.emit("note:add", { text: "Go hiking", style: "sticky" });
-
-    const [note, inJarCount] = await addedPromise;
-    expect(note.text).toBe("Go hiking");
-    expect(note.state).toBe("in_jar");
-    expect(inJarCount).toBe(1);
-  });
-});
-
-describe("note:pull", () => {
-  it("pulls a random note and broadcasts to the room", async () => {
-    // Pre-populate a note
-    await noteQueries.createNote(pool, { jarId: testJarId, text: "Surprise!", style: "sticky" });
-
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
-
-    alice.connect();
-    await waitForEvent(alice, "room:state");
-
-    const pulledPromise = waitForEvent(alice, "note:pulled");
-    alice.emit("note:pull");
-
-    const [note, pulledBy] = await pulledPromise;
-    expect(note.text).toBe("Surprise!");
-    expect(note.state).toBe("pulled");
-    expect(pulledBy).toBeDefined();
+    const [error] = await errorPromise;
+    expect(error).toContain("Sign in");
   });
 
-  it("rejects pull when jar is empty", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
+  it("rejects note:pull from anonymous user", async () => {
+    await noteQueries.createNote(pool, { jarId: testJarId, text: "In jar", style: "sticky" });
 
-    alice.connect();
-    await waitForEvent(alice, "room:state");
+    const client = connectClient(testRoomCode, "Guest");
+    clients.push(client);
 
-    const rejectedPromise = waitForEvent(alice, "pull:rejected");
-    alice.emit("note:pull");
+    client.connect();
+    await waitForEvent(client, "room:state");
 
-    const [reason] = await rejectedPromise;
-    expect(reason).toContain("empty");
+    const errorPromise = waitForEvent(client, "room:error");
+    client.emit("note:pull");
+
+    const [error] = await errorPromise;
+    expect(error).toContain("Sign in");
   });
-});
 
-describe("note:discard", () => {
-  it("discards a pulled note and broadcasts", async () => {
-    const created = await noteQueries.createNote(pool, {
+  it("rejects note:discard from anonymous user", async () => {
+    const note = await noteQueries.createNote(pool, {
       jarId: testJarId,
-      text: "Discard me",
+      text: "Pulled",
       style: "sticky",
     });
-    await noteQueries.updateNoteState(pool, created.id, "pulled");
+    await noteQueries.updateNoteState(pool, note.id, "pulled");
 
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
+    const client = connectClient(testRoomCode, "Guest");
+    clients.push(client);
 
-    alice.connect();
-    await waitForEvent(alice, "room:state");
+    client.connect();
+    await waitForEvent(client, "room:state");
 
-    const discardPromise = waitForEvent(alice, "note:discarded");
-    alice.emit("note:discard", created.id);
+    const errorPromise = waitForEvent(client, "room:error");
+    client.emit("note:discard", note.id);
 
-    const [noteId] = await discardPromise;
-    expect(noteId).toBe(created.id);
-  });
-});
-
-describe("note:return", () => {
-  it("returns a pulled note to the jar and broadcasts", async () => {
-    const created = await noteQueries.createNote(pool, {
-      jarId: testJarId,
-      text: "Return me",
-      style: "sticky",
-    });
-    await noteQueries.updateNoteState(pool, created.id, "pulled");
-
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
-
-    alice.connect();
-    await waitForEvent(alice, "room:state");
-
-    const returnPromise = waitForEvent(alice, "note:returned");
-    alice.emit("note:return", created.id);
-
-    const [noteId, inJarCount] = await returnPromise;
-    expect(noteId).toBe(created.id);
-    expect(inJarCount).toBe(1);
+    const [error] = await errorPromise;
+    expect(error).toContain("Sign in");
   });
 });

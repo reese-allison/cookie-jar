@@ -3,16 +3,20 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
 import { createAdapter } from "@socket.io/redis-adapter";
 import Redis from "ioredis";
 import { Server } from "socket.io";
+import { type SocketAuthData, socketAuthMiddleware } from "./authMiddleware";
 import { createSocketContext } from "./context";
 import { registerNoteHandlers } from "./noteHandler";
 import { registerRoomHandlers } from "./roomHandler";
 
 export type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
+const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
+
 export function createSocketServer(httpServer: HttpServer): TypedServer {
   const io: TypedServer = new Server(httpServer, {
     cors: {
-      origin: "*",
+      origin: clientUrl,
+      credentials: true,
     },
   });
 
@@ -22,8 +26,12 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   const subClient = pubClient.duplicate();
   io.adapter(createAdapter(pubClient, subClient));
 
+  // Auth middleware — verifies session cookie on handshake
+  io.use(socketAuthMiddleware);
+
   io.on("connection", (socket) => {
-    const ctx = createSocketContext();
+    const authData = (socket.data as SocketAuthData) ?? { user: null };
+    const ctx = createSocketContext(authData);
     registerRoomHandlers(io, socket, ctx);
     registerNoteHandlers(io, socket, ctx);
   });

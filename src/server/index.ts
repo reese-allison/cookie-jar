@@ -1,15 +1,30 @@
 import { createServer } from "node:http";
+import { toNodeHandler } from "better-auth/node";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import { auth } from "./auth";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
 import { createSocketServer } from "./socket/server";
 
+const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
+
 const app = express();
 const httpServer = createServer(app);
 
-app.use(cors());
+app.use(
+  cors({
+    origin: clientUrl,
+    credentials: true,
+  }),
+);
+app.use(cookieParser());
+
+// better-auth handler — MUST be before express.json() per better-auth docs
+app.all("/api/auth/{*splat}", toNodeHandler(auth));
+
 app.use(express.json());
 
 // Health check

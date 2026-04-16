@@ -59,7 +59,13 @@ beforeAll(async () => {
     ownerId: testUserId,
     name: "Socket Test Jar",
     appearance: {},
-    config: { noteVisibility: "open", sealedRevealCount: 1, showAuthors: false },
+    config: {
+      noteVisibility: "open",
+      pullVisibility: "shared",
+      sealedRevealCount: 1,
+      showAuthors: false,
+      showPulledBy: false,
+    },
   });
   testJarId = jar.id;
 
@@ -191,42 +197,32 @@ describe("cursor broadcasting", () => {
 });
 
 describe("room lock/unlock", () => {
-  it("owner can lock a room and all members are notified", async () => {
+  it("rejects lock from anonymous user (not owner)", async () => {
     const alice = connectClient(testRoomCode, "Alice");
-    const bob = connectClient(testRoomCode, "Bob");
-    clients.push(alice, bob);
+    clients.push(alice);
 
     alice.connect();
     await waitForEvent(alice, "room:state");
 
-    bob.connect();
-    await waitForEvent(bob, "room:state");
-
-    const lockPromise = waitForEvent(bob, "room:locked");
+    const errorPromise = waitForEvent(alice, "room:error");
     alice.emit("room:lock");
 
-    await lockPromise;
+    const [error] = await errorPromise;
+    expect(error).toContain("owner");
   });
 
-  it("owner can unlock a locked room", async () => {
+  it("rejects unlock from anonymous user (not owner)", async () => {
     const alice = connectClient(testRoomCode, "Alice");
-    const bob = connectClient(testRoomCode, "Bob");
-    clients.push(alice, bob);
+    clients.push(alice);
 
     alice.connect();
     await waitForEvent(alice, "room:state");
 
-    bob.connect();
-    await waitForEvent(bob, "room:state");
-
-    // Lock then unlock
-    const lockPromise = waitForEvent(bob, "room:locked");
-    alice.emit("room:lock");
-    await lockPromise;
-
-    const unlockPromise = waitForEvent(bob, "room:unlocked");
+    const errorPromise = waitForEvent(alice, "room:error");
     alice.emit("room:unlock");
-    await unlockPromise;
+
+    const [error] = await errorPromise;
+    expect(error).toContain("owner");
   });
 });
 

@@ -81,8 +81,9 @@ export interface Room {
 
 export interface User {
   id: string;
-  email?: string;
+  email: string;
   displayName: string;
+  image?: string;
   createdAt: string;
 }
 

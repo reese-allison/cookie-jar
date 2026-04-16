@@ -24,7 +24,13 @@ beforeAll(async () => {
     ownerId: testUserId,
     name: "Room Test Jar",
     appearance: {},
-    config: { noteVisibility: "open", sealedRevealCount: 1, showAuthors: false },
+    config: {
+      noteVisibility: "open",
+      pullVisibility: "shared",
+      sealedRevealCount: 1,
+      showAuthors: false,
+      showPulledBy: false,
+    },
   });
   testJarId = jar.id;
 });
