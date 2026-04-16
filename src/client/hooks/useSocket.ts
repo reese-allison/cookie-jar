@@ -70,7 +70,13 @@ export function useSocket() {
 
     // Note events
     socket.on("note:state", (state) =>
-      setNoteState(state.inJarCount, state.pulledNotes, state.pullCounts, state.jarConfig),
+      setNoteState(
+        state.inJarCount,
+        state.pulledNotes,
+        state.pullCounts,
+        state.jarConfig,
+        state.jarAppearance,
+      ),
     );
     socket.on("note:added", (note, inJarCount) => {
       noteAdded(note, inJarCount);

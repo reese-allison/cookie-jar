@@ -10,7 +10,7 @@ import { useRoomStore } from "./stores/roomStore";
 function App() {
   const { data: session } = useSession();
   const { room, isConnected, isJoining, error, cursors } = useRoomStore();
-  const { inJarCount, pulledNotes, isAdding, jarConfig, history } = useNoteStore();
+  const { inJarCount, pulledNotes, isAdding, jarConfig, jarAppearance, history } = useNoteStore();
   const { setError } = useRoomStore();
   const [isCreating, setIsCreating] = useState(false);
   const {
@@ -106,6 +106,7 @@ function App() {
         isAdding={isAdding}
         isViewer={isViewer}
         showPulledBy={jarConfig?.showPulledBy ?? false}
+        jarAppearance={jarAppearance ?? undefined}
         onMouseMove={moveCursor}
         onLock={lockRoom}
         onUnlock={unlockRoom}

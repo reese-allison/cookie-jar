@@ -1,4 +1,4 @@
-import type { JarConfig, Note, PullHistoryEntry } from "@shared/types";
+import type { JarAppearance, JarConfig, Note, PullHistoryEntry } from "@shared/types";
 import { create } from "zustand";
 
 interface NoteStore {
@@ -6,6 +6,7 @@ interface NoteStore {
   pulledNotes: Note[];
   pullCounts: Record<string, number>;
   jarConfig: JarConfig | null;
+  jarAppearance: JarAppearance | null;
   history: PullHistoryEntry[];
   isAdding: boolean;
   isPulling: boolean;
@@ -16,6 +17,7 @@ interface NoteStore {
     pulledNotes: Note[],
     pullCounts?: Record<string, number>,
     jarConfig?: JarConfig,
+    jarAppearance?: JarAppearance,
   ) => void;
   noteAdded: (note: Note, inJarCount: number) => void;
   notePulled: (note: Note) => void;
@@ -32,6 +34,7 @@ const initialState = {
   pulledNotes: [] as Note[],
   pullCounts: {} as Record<string, number>,
   jarConfig: null as JarConfig | null,
+  jarAppearance: null as JarAppearance | null,
   history: [] as PullHistoryEntry[],
   isAdding: false,
   isPulling: false,
@@ -40,12 +43,13 @@ const initialState = {
 export const useNoteStore = create<NoteStore>((set) => ({
   ...initialState,
 
-  setNoteState: (inJarCount, pulledNotes, pullCounts, jarConfig) =>
+  setNoteState: (inJarCount, pulledNotes, pullCounts, jarConfig, jarAppearance) =>
     set({
       inJarCount,
       pulledNotes,
       ...(pullCounts !== undefined ? { pullCounts } : {}),
       ...(jarConfig !== undefined ? { jarConfig } : {}),
+      ...(jarAppearance !== undefined ? { jarAppearance } : {}),
     }),
 
   noteAdded: (_note, inJarCount) => set({ inJarCount, isAdding: false }),

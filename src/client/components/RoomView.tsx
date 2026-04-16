@@ -1,4 +1,11 @@
-import type { CursorPosition, Note, NoteStyle, PullHistoryEntry, Room } from "@shared/types";
+import type {
+  CursorPosition,
+  JarAppearance,
+  Note,
+  NoteStyle,
+  PullHistoryEntry,
+  Room,
+} from "@shared/types";
 import { useCallback, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
@@ -18,6 +25,7 @@ interface RoomViewProps {
   isAdding: boolean;
   isViewer: boolean;
   showPulledBy: boolean;
+  jarAppearance?: JarAppearance;
   onMouseMove: (x: number, y: number) => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -39,6 +47,7 @@ export function RoomView({
   isAdding,
   isViewer,
   showPulledBy,
+  jarAppearance,
   onMouseMove,
   onLock,
   onUnlock,
@@ -118,6 +127,7 @@ export function RoomView({
             isLocked={!canInteract}
             onPull={onPull}
             isHighlighted={hoverTarget === "jar"}
+            appearance={jarAppearance}
           />
         </div>
 

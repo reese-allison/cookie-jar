@@ -100,6 +100,7 @@ export interface NoteStatePayload {
   pulledNotes: Note[];
   pullCounts?: Record<string, number>;
   jarConfig?: JarConfig;
+  jarAppearance?: JarAppearance;
 }
 
 export interface ServerToClientEvents {

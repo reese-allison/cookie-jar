@@ -7,6 +7,7 @@ import { auth } from "./auth";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
+import { uploadRouter } from "./routes/uploads";
 import { createSocketServer } from "./socket/server";
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
@@ -32,10 +33,15 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Static files (uploads, sounds)
+app.use("/uploads", express.static("public/uploads"));
+app.use("/sounds", express.static("public/sounds"));
+
 // Routes
 app.use("/api/jars", jarRouter);
 app.use("/api/notes", noteRouter);
 app.use("/api/rooms", roomRouter);
+app.use("/api/uploads", uploadRouter);
 
 // Socket.io
 const io = createSocketServer(httpServer);

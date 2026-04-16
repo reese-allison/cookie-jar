@@ -1,5 +1,6 @@
 import type {
   ClientToServerEvents,
+  JarAppearance,
   JarConfig,
   Room,
   RoomMember,
@@ -77,7 +78,12 @@ async function sendNoteState(
   jarId: string,
   isPrivate: boolean,
   jarConfig: JarConfig | null,
+  jarAppearance: JarAppearance | null,
 ): Promise<void> {
+  const shared = {
+    jarConfig: jarConfig ?? undefined,
+    jarAppearance: jarAppearance ?? undefined,
+  };
   const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
   if (isPrivate) {
     const [allPulled, pullCounts] = await Promise.all([
@@ -85,15 +91,10 @@ async function sendNoteState(
       noteQueries.getPullCounts(pool, jarId),
     ]);
     const myNotes = allPulled.filter((n) => n.pulledBy === socket.id);
-    socket.emit("note:state", {
-      inJarCount,
-      pulledNotes: myNotes,
-      pullCounts,
-      jarConfig: jarConfig ?? undefined,
-    });
+    socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts, ...shared });
   } else {
     const pulledNotes = await noteQueries.listNotesByJar(pool, jarId, "pulled");
-    socket.emit("note:state", { inJarCount, pulledNotes, jarConfig: jarConfig ?? undefined });
+    socket.emit("note:state", { inJarCount, pulledNotes, ...shared });
   }
 }
 
@@ -148,7 +149,14 @@ export function registerRoomHandlers(
 
     await socket.join(roomId);
     socket.emit("room:state", buildRoomState(dbRoom, roomId));
-    await sendNoteState(socket, dbRoom.jarId, jarConfig?.pullVisibility === "private", jarConfig);
+    const jarAppearance = jar?.appearance ?? null;
+    await sendNoteState(
+      socket,
+      dbRoom.jarId,
+      jarConfig?.pullVisibility === "private",
+      jarConfig,
+      jarAppearance,
+    );
     socket.to(roomId).emit("room:member_joined", member);
   });
 
