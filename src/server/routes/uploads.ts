@@ -12,7 +12,17 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"];
+const ALLOWED_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "audio/webm",
+];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 const storage = multer.diskStorage({

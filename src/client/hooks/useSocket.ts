@@ -71,15 +71,21 @@ export function useSocket() {
     socket.on("cursor:moved", (cursor) => setCursor(cursor));
 
     // Note events
-    socket.on("note:state", (state) =>
+    socket.on("note:state", (state) => {
       setNoteState(
         state.inJarCount,
         state.pulledNotes,
         state.pullCounts,
         state.jarConfig,
         state.jarAppearance,
-      ),
-    );
+      );
+      // Apply jar's custom sound pack if present
+      if (state.jarAppearance?.soundPack) {
+        soundManager.setCustomPack(state.jarAppearance.soundPack);
+      } else {
+        soundManager.clearCustomPack();
+      }
+    });
     socket.on("note:added", (note, inJarCount) => {
       noteAdded(note, inJarCount);
       soundManager.play("noteAdd");

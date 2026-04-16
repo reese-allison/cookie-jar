@@ -27,11 +27,21 @@ export type PullVisibility = "shared" | "private";
  * plus an optional background. This lets users make the "jar" anything they want —
  * a cookie jar, a cauldron, a treasure chest, a hat, whatever.
  */
+export interface JarSoundPack {
+  noteAdd?: string;
+  notePull?: string;
+  noteDiscard?: string;
+  noteReturn?: string;
+  userJoin?: string;
+  userLeave?: string;
+}
+
 export interface JarAppearance {
   openedImageUrl?: string;
   closedImageUrl?: string;
   backgroundImageUrl?: string;
   label?: string;
+  soundPack?: JarSoundPack;
 }
 
 export interface JarConfig {

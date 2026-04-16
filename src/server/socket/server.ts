@@ -5,6 +5,7 @@ import Redis from "ioredis";
 import { Server } from "socket.io";
 import { type SocketAuthData, socketAuthMiddleware } from "./authMiddleware";
 import { createSocketContext } from "./context";
+import { IdleTimeoutManager } from "./idleTimeout";
 import { registerNoteHandlers } from "./noteHandler";
 import { registerRoomHandlers } from "./roomHandler";
 
@@ -26,13 +27,16 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   const subClient = pubClient.duplicate();
   io.adapter(createAdapter(pubClient, subClient));
 
+  // Idle timeout manager for auto-closing inactive rooms
+  const idleTimeouts = new IdleTimeoutManager();
+
   // Auth middleware — verifies session cookie on handshake
   io.use(socketAuthMiddleware);
 
   io.on("connection", (socket) => {
     const authData = (socket.data as SocketAuthData) ?? { user: null };
     const ctx = createSocketContext(authData);
-    registerRoomHandlers(io, socket, ctx);
+    registerRoomHandlers(io, socket, ctx, idleTimeouts);
     registerNoteHandlers(io, socket, ctx);
   });
 

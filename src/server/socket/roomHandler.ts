@@ -12,6 +12,7 @@ import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
 import type { SocketContext } from "./context";
+import type { IdleTimeoutManager } from "./idleTimeout";
 import type { TypedServer } from "./server";
 
 // In-memory presence per room (ephemeral — not persisted to DB)
@@ -102,6 +103,7 @@ export function registerRoomHandlers(
   io: TypedServer,
   socket: TypedSocket,
   ctx: SocketContext,
+  idleTimeouts?: IdleTimeoutManager,
 ): void {
   socket.on("room:join", async (code, displayName) => {
     const dbRoom = await roomQueries.getRoomByCode(pool, code);
@@ -158,6 +160,16 @@ export function registerRoomHandlers(
       jarAppearance,
     );
     socket.to(roomId).emit("room:member_joined", member);
+
+    // Start/reset idle timeout for the room
+    if (idleTimeouts) {
+      idleTimeouts.start(roomId, dbRoom.idleTimeoutMinutes, async (expiredRoomId) => {
+        await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
+        io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
+        io.in(expiredRoomId).disconnectSockets();
+        roomMembers.delete(expiredRoomId);
+      });
+    }
   });
 
   socket.on("room:leave", () => handleLeave());
@@ -165,6 +177,7 @@ export function registerRoomHandlers(
 
   socket.on("cursor:move", (position) => {
     if (!ctx.roomId) return;
+    idleTimeouts?.resetActivity(ctx.roomId);
     socket.volatile.to(ctx.roomId).emit("cursor:moved", {
       ...position,
       userId: socket.id,
@@ -173,6 +186,7 @@ export function registerRoomHandlers(
 
   socket.on("room:lock", async () => {
     if (!ctx.roomId) return;
+    idleTimeouts?.resetActivity(ctx.roomId);
     if (ctx.role !== "owner") {
       socket.emit("room:error", "Only the room owner can lock the room");
       return;
@@ -199,6 +213,7 @@ export function registerRoomHandlers(
       members.delete(ctx.memberId);
       if (members.size === 0) {
         roomMembers.delete(ctx.roomId);
+        idleTimeouts?.stop(ctx.roomId);
       }
     }
 
