@@ -2,6 +2,7 @@ import { CURSOR_BROADCAST_INTERVAL_MS } from "@shared/constants";
 import type { ClientToServerEvents, NoteStyle, ServerToClientEvents } from "@shared/types";
 import { useCallback, useEffect, useRef } from "react";
 import { io, type Socket } from "socket.io-client";
+import { soundManager } from "../lib/sounds";
 import { useNoteStore } from "../stores/noteStore";
 import { useRoomStore } from "../stores/roomStore";
 
@@ -55,8 +56,14 @@ export function useSocket() {
     // Room events
     socket.on("room:state", (room) => setRoom(room));
     socket.on("room:error", (error) => setError(error));
-    socket.on("room:member_joined", (member) => addMember(member));
-    socket.on("room:member_left", (memberId) => removeMember(memberId));
+    socket.on("room:member_joined", (member) => {
+      addMember(member);
+      soundManager.play("userJoin");
+    });
+    socket.on("room:member_left", (memberId) => {
+      removeMember(memberId);
+      soundManager.play("userLeave");
+    });
     socket.on("room:locked", () => setLocked(true));
     socket.on("room:unlocked", () => setLocked(false));
     socket.on("cursor:moved", (cursor) => setCursor(cursor));
@@ -65,12 +72,22 @@ export function useSocket() {
     socket.on("note:state", (state) =>
       setNoteState(state.inJarCount, state.pulledNotes, state.pullCounts, state.jarConfig),
     );
-    socket.on("note:added", (note, inJarCount) => noteAdded(note, inJarCount));
+    socket.on("note:added", (note, inJarCount) => {
+      noteAdded(note, inJarCount);
+      soundManager.play("noteAdd");
+    });
     socket.on("note:pulled", (note) => {
       notePulled(note);
+      soundManager.play("notePull");
     });
-    socket.on("note:discarded", (noteId) => noteDiscarded(noteId));
-    socket.on("note:returned", (noteId, inJarCount) => noteReturned(noteId, inJarCount));
+    socket.on("note:discarded", (noteId) => {
+      noteDiscarded(noteId);
+      soundManager.play("noteDiscard");
+    });
+    socket.on("note:returned", (noteId, inJarCount) => {
+      noteReturned(noteId, inJarCount);
+      soundManager.play("noteReturn");
+    });
     socket.on("pull:rejected", () => setPulling(false));
     socket.on("history:list", (entries) => setHistory(entries));
 

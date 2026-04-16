@@ -613,6 +613,17 @@ body {
     top 0.05s linear;
 }
 
+/* ---- Sound Toggle ---- */
+
+.sound-toggle {
+  font-size: 1.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
 /* ---- Connection Status ---- */
 
 .connection-status {

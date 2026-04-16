@@ -8,6 +8,7 @@ import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
 import { NoteForm } from "./NoteForm";
 import { PullHistory } from "./PullHistory";
+import { SoundToggle } from "./SoundToggle";
 
 interface RoomViewProps {
   room: Room;
@@ -96,6 +97,7 @@ export function RoomView({
           </button>
         </div>
         <PullHistory entries={history} onRefresh={onGetHistory} onClear={onClearHistory} />
+        <SoundToggle />
       </header>
 
       <div className="room-members">
