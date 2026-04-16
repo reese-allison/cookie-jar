@@ -69,6 +69,19 @@ export async function updateNoteState(
   return rows.length > 0 ? rowToNote(rows[0]) : null;
 }
 
+export async function updateNoteStateIfInJar(
+  pool: pg.Pool,
+  noteId: string,
+  jarId: string,
+  state: NoteState,
+): Promise<Note | null> {
+  const { rows } = await pool.query(
+    `UPDATE notes SET state = $1, updated_at = now() WHERE id = $2 AND jar_id = $3 RETURNING *`,
+    [state, noteId, jarId],
+  );
+  return rows.length > 0 ? rowToNote(rows[0]) : null;
+}
+
 export async function updateNote(
   pool: pg.Pool,
   noteId: string,

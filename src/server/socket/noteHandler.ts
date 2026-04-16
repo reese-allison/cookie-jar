@@ -1,4 +1,5 @@
 import type { ClientToServerEvents, Note, ServerToClientEvents } from "@shared/types";
+import { isValidNoteText } from "@shared/validation";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
@@ -27,6 +28,10 @@ export function registerNoteHandlers(
   socket.on("note:add", async (noteInput) => {
     if (!ctx.roomId || !ctx.jarId) return;
     if (!requireContributor(ctx, socket)) return;
+    if (!isValidNoteText(noteInput.text)) {
+      socket.emit("room:error", "Note text must be 1-500 characters");
+      return;
+    }
 
     const note = await noteQueries.createNote(pool, {
       jarId: ctx.jarId,
@@ -77,10 +82,11 @@ export function registerNoteHandlers(
   });
 
   socket.on("note:discard", async (noteId) => {
-    if (!ctx.roomId) return;
+    if (!ctx.roomId || !ctx.jarId) return;
     if (!requireContributor(ctx, socket)) return;
 
-    const updated = await noteQueries.updateNoteState(pool, noteId, "discarded");
+    // Verify note belongs to this jar
+    const updated = await noteQueries.updateNoteStateIfInJar(pool, noteId, ctx.jarId, "discarded");
     if (!updated) return;
 
     io.to(ctx.roomId).emit("note:discarded", noteId);
@@ -90,7 +96,7 @@ export function registerNoteHandlers(
     if (!ctx.roomId || !ctx.jarId) return;
     if (!requireContributor(ctx, socket)) return;
 
-    const updated = await noteQueries.updateNoteState(pool, noteId, "in_jar");
+    const updated = await noteQueries.updateNoteStateIfInJar(pool, noteId, ctx.jarId, "in_jar");
     if (!updated) return;
 
     const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");

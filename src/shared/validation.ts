@@ -20,9 +20,16 @@ export function isValidUrl(url: string): boolean {
 }
 
 export function generateRoomCode(): string {
+  const array = new Uint32Array(ROOM_CODE_LENGTH);
+  crypto.getRandomValues(array);
   let code = "";
   for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+    code += ROOM_CODE_CHARS[array[i] % ROOM_CODE_CHARS.length];
   }
   return code;
+}
+
+export function isValidDisplayName(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed.length > 0 && trimmed.length <= 30;
 }

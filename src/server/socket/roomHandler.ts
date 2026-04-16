@@ -6,6 +6,7 @@ import type {
   RoomMember,
   ServerToClientEvents,
 } from "@shared/types";
+import { isValidDisplayName } from "@shared/validation";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
@@ -99,6 +100,21 @@ async function sendNoteState(
   }
 }
 
+function startIdleTimeout(
+  io: TypedServer,
+  idleTimeouts: IdleTimeoutManager | undefined,
+  roomId: string,
+  timeoutMinutes: number,
+): void {
+  if (!idleTimeouts) return;
+  idleTimeouts.start(roomId, timeoutMinutes, async (expiredRoomId) => {
+    await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
+    io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
+    io.in(expiredRoomId).disconnectSockets();
+    roomMembers.delete(expiredRoomId);
+  });
+}
+
 export function registerRoomHandlers(
   io: TypedServer,
   socket: TypedSocket,
@@ -106,6 +122,10 @@ export function registerRoomHandlers(
   idleTimeouts?: IdleTimeoutManager,
 ): void {
   socket.on("room:join", async (code, displayName) => {
+    if (!isValidDisplayName(displayName)) {
+      socket.emit("room:error", "Display name must be 1-30 characters");
+      return;
+    }
     const dbRoom = await roomQueries.getRoomByCode(pool, code);
     if (!dbRoom) {
       socket.emit("room:error", "Room not found");
@@ -161,15 +181,7 @@ export function registerRoomHandlers(
     );
     socket.to(roomId).emit("room:member_joined", member);
 
-    // Start/reset idle timeout for the room
-    if (idleTimeouts) {
-      idleTimeouts.start(roomId, dbRoom.idleTimeoutMinutes, async (expiredRoomId) => {
-        await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
-        io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
-        io.in(expiredRoomId).disconnectSockets();
-        roomMembers.delete(expiredRoomId);
-      });
-    }
+    startIdleTimeout(io, idleTimeouts, roomId, dbRoom.idleTimeoutMinutes);
   });
 
   socket.on("room:leave", () => handleLeave());

@@ -92,15 +92,16 @@ export function RoomView({
         <span className="room-code">{room.code}</span>
         <span className="room-state">{room.state}</span>
         <div className="room-actions">
-          {room.state === "open" ? (
+          {!isViewer && room.state === "open" && (
             <button type="button" onClick={onLock}>
               Lock
             </button>
-          ) : room.state === "locked" ? (
+          )}
+          {!isViewer && room.state === "locked" && (
             <button type="button" onClick={onUnlock}>
               Unlock
             </button>
-          ) : null}
+          )}
           <button type="button" onClick={onLeave}>
             Leave
           </button>

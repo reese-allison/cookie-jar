@@ -70,10 +70,10 @@ export async function updateRoomState(
   roomId: string,
   state: RoomState,
 ): Promise<RoomRow | null> {
-  const closedAt = state === "closed" ? "now()" : "NULL";
+  const closedAt = state === "closed" ? new Date() : null;
   const { rows } = await pool.query(
-    `UPDATE rooms SET state = $1, closed_at = ${closedAt} WHERE id = $2 RETURNING *`,
-    [state, roomId],
+    `UPDATE rooms SET state = $1, closed_at = $2 WHERE id = $3 RETURNING *`,
+    [state, closedAt, roomId],
   );
   return rows.length > 0 ? rowToRoom(rows[0]) : null;
 }

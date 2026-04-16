@@ -30,7 +30,19 @@ const storage = multer.diskStorage({
     cb(null, UPLOAD_DIR);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".png";
+    // Derive extension from mimetype, not user-provided filename (prevents XSS via .html uploads)
+    const MIME_TO_EXT: Record<string, string> = {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "image/svg+xml": ".svg",
+      "audio/mpeg": ".mp3",
+      "audio/wav": ".wav",
+      "audio/ogg": ".ogg",
+      "audio/webm": ".webm",
+    };
+    const ext = MIME_TO_EXT[file.mimetype] ?? ".bin";
     cb(null, `${randomUUID()}${ext}`);
   },
 });

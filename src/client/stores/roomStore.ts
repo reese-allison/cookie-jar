@@ -90,5 +90,5 @@ export const useRoomStore = create<RoomStore>((set) => ({
       };
     }),
 
-  reset: () => set(initialState),
+  reset: () => set({ ...initialState, cursors: new Map() }),
 }));
