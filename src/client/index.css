@@ -178,6 +178,71 @@ body {
   cursor: not-allowed;
 }
 
+/* ---- Template Browser ---- */
+
+.template-browser {
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+.template-browser__toggle {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b6914;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.template-browser__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.template-browser__loading,
+.template-browser__empty {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.template-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 1rem;
+  background: #fff;
+  border: 1px solid #d4c5a9;
+  border-radius: 10px;
+}
+
+.template-card__name {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.template-card__clone {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.375rem 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: #8b6914;
+  color: #fff;
+  cursor: pointer;
+}
+
+.template-card__clone:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---- Divider ---- */
 
 .room-code-entry__divider {

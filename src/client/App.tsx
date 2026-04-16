@@ -76,6 +76,46 @@ function App() {
     [joinRoom, setError, user?.displayName],
   );
 
+  const cloneTemplateAndJoin = useCallback(
+    async (jarId: string) => {
+      setIsCreating(true);
+      try {
+        const cloneRes = await fetch(`/api/jars/${jarId}/clone`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!cloneRes.ok) {
+          const data = await cloneRes.json();
+          setError(data.error ?? "Failed to clone template");
+          setIsCreating(false);
+          return;
+        }
+        const cloned = await cloneRes.json();
+
+        const roomRes = await fetch("/api/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ jarId: cloned.id }),
+        });
+        if (!roomRes.ok) {
+          const data = await roomRes.json();
+          setError(data.error ?? "Failed to create room");
+          setIsCreating(false);
+          return;
+        }
+        const newRoom = await roomRes.json();
+
+        setIsCreating(false);
+        joinRoom(newRoom.code, user?.displayName ?? "Host");
+      } catch {
+        setError("Something went wrong");
+        setIsCreating(false);
+      }
+    },
+    [joinRoom, setError, user?.displayName],
+  );
+
   // Determine if current user is a viewer
   const myMember = room?.members.find((m) =>
     user ? m.displayName === user.displayName : m.role === "viewer",
@@ -87,6 +127,7 @@ function App() {
       <RoomCodeEntry
         onJoin={joinRoom}
         onCreateJar={user ? createJarAndJoin : undefined}
+        onCloneTemplate={user ? cloneTemplateAndJoin : undefined}
         isJoining={isJoining}
         isCreating={isCreating}
         error={error}

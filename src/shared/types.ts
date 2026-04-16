@@ -48,6 +48,8 @@ export interface Jar {
   name: string;
   appearance: JarAppearance;
   config: JarConfig;
+  isTemplate: boolean;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 }

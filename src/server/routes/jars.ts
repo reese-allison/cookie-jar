@@ -54,6 +54,35 @@ jarRouter.get("/", async (req, res) => {
   }
 });
 
+// List template jars (public)
+jarRouter.get("/templates/list", async (_req, res) => {
+  try {
+    const templates = await jarQueries.listTemplates(pool);
+    res.json(templates);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to list templates" });
+  }
+});
+
+// Clone/fork a jar (requires auth)
+jarRouter.post("/:id/clone", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const source = await jarQueries.getJarById(pool, req.params.id);
+    if (!source) {
+      res.status(404).json({ error: "Jar not found" });
+      return;
+    }
+    if (!source.isTemplate && !source.isPublic && source.ownerId !== req.user?.id) {
+      res.status(403).json({ error: "This jar cannot be cloned" });
+      return;
+    }
+    const cloned = await jarQueries.cloneJar(pool, req.params.id, req.user?.id ?? "");
+    res.status(201).json(cloned);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to clone jar" });
+  }
+});
+
 // Update a jar (requires auth + owner)
 jarRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

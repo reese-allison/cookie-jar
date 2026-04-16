@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AuthButtons } from "./AuthButtons";
 import { CreateJar } from "./CreateJar";
+import { TemplateBrowser } from "./TemplateBrowser";
 import { UserMenu } from "./UserMenu";
 
 interface RoomCodeEntryProps {
@@ -10,6 +11,7 @@ interface RoomCodeEntryProps {
   isCreating: boolean;
   error: string | null;
   user: { displayName: string; image?: string } | null;
+  onCloneTemplate?: (jarId: string) => void;
 }
 
 export function RoomCodeEntry({
@@ -19,6 +21,7 @@ export function RoomCodeEntry({
   isCreating,
   error,
   user,
+  onCloneTemplate,
 }: RoomCodeEntryProps) {
   const [code, setCode] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -46,6 +49,8 @@ export function RoomCodeEntry({
       )}
 
       {onCreateJar && <CreateJar onCreate={onCreateJar} isCreating={isCreating} />}
+
+      {onCloneTemplate && <TemplateBrowser onClone={onCloneTemplate} isCloning={isCreating} />}
 
       <div className="room-code-entry__divider">
         <span>or join an existing room</span>

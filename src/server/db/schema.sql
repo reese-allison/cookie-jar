@@ -63,6 +63,8 @@ CREATE TABLE jars (
   name TEXT NOT NULL,
   appearance JSONB NOT NULL DEFAULT '{}',
   config JSONB NOT NULL DEFAULT '{}',
+  is_template BOOLEAN NOT NULL DEFAULT false,
+  is_public BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
