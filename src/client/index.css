@@ -187,6 +187,10 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.create-jar button:hover:not(:disabled) {
+  background: #a37d1a;
+}
+
 .create-jar button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -238,6 +242,10 @@ textarea:focus-visible {
 .template-card__name {
   font-weight: 600;
   font-size: 0.875rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .template-card__clone {
@@ -250,6 +258,10 @@ textarea:focus-visible {
   background: #8b6914;
   color: #fff;
   cursor: pointer;
+}
+
+.template-card__clone:hover:not(:disabled) {
+  background: #a37d1a;
 }
 
 .template-card__clone:disabled {
@@ -363,6 +375,28 @@ textarea:focus-visible {
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pull-history__toggle:hover {
+  background: #f5efe6;
+}
+
+.pull-history__clear:hover {
+  background: rgba(211, 47, 47, 0.05);
+}
+
+.template-browser__toggle:hover {
+  color: #a37d1a;
+}
+
+.user-menu__signout:hover {
+  background: #f5efe6;
+  color: #3a3a3a;
+}
+
+.sound-toggle:hover {
+  opacity: 0.7;
 }
 
 .pull-history__panel {
@@ -424,6 +458,16 @@ textarea:focus-visible {
   color: #d32f2f;
   margin-top: 0.5rem;
   width: 100%;
+}
+
+/* ---- Empty State ---- */
+
+.empty-state {
+  font-family: "Caveat", cursive;
+  font-size: 1.25rem;
+  color: #8b6914;
+  text-align: center;
+  padding: 1rem;
 }
 
 /* ---- Room View ---- */

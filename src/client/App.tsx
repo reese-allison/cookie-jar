@@ -121,6 +121,7 @@ function App() {
     user ? m.displayName === user.displayName : m.role === "viewer",
   );
   const isViewer = myMember?.role === "viewer" || !session?.user;
+  const isOwner = myMember?.role === "owner";
 
   if (!room) {
     return (
@@ -146,6 +147,7 @@ function App() {
         pulledNotes={pulledNotes}
         isAdding={isAdding}
         isViewer={isViewer}
+        isOwner={isOwner ?? false}
         showPulledBy={jarConfig?.showPulledBy ?? false}
         jarAppearance={jarAppearance ?? undefined}
         onMouseMove={moveCursor}

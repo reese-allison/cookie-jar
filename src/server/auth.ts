@@ -8,7 +8,13 @@ const authPool = new pg.Pool({
 
 export const auth = betterAuth({
   database: authPool,
-  secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-in-production",
+  secret: (() => {
+    const secret = process.env.BETTER_AUTH_SECRET;
+    if (!secret && process.env.NODE_ENV === "production") {
+      throw new Error("BETTER_AUTH_SECRET must be set in production");
+    }
+    return secret ?? "dev-only-secret-not-for-production";
+  })(),
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",
   trustedOrigins: [process.env.CLIENT_URL ?? "http://localhost:5175"],
   socialProviders: {

@@ -57,7 +57,11 @@ export function useSocket() {
 
     // Room events
     socket.on("room:state", (room) => setRoom(room));
-    socket.on("room:error", (error) => setError(error));
+    socket.on("room:error", (error) => {
+      setError(error);
+      setAdding(false);
+      setPulling(false);
+    });
     socket.on("room:member_joined", (member) => {
       addMember(member);
       soundManager.play("userJoin");
@@ -131,6 +135,7 @@ export function useSocket() {
     noteReturned,
     noteSealed,
     notesRevealed,
+    setAdding,
     setPulling,
     setHistory,
   ]);

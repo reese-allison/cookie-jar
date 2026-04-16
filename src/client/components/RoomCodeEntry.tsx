@@ -62,6 +62,7 @@ export function RoomCodeEntry({
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="Room Code"
+          aria-label="Room code"
           maxLength={6}
           className="room-code-input"
           autoComplete="off"
@@ -72,6 +73,7 @@ export function RoomCodeEntry({
             type="text"
             value={user.displayName}
             placeholder="Your Name"
+            aria-label="Display name"
             maxLength={30}
             disabled
             readOnly
@@ -81,6 +83,7 @@ export function RoomCodeEntry({
             type="text"
             value={guestName}
             onChange={(e) => setGuestName(e.target.value)}
+            aria-label="Guest name"
             placeholder="Guest Name"
             maxLength={30}
             disabled={isJoining}

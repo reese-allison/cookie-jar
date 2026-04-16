@@ -15,6 +15,7 @@ export function PullHistory({ entries, onRefresh, onClear }: PullHistoryProps) {
       <button
         type="button"
         className="pull-history__toggle"
+        aria-expanded={isOpen}
         onClick={() => {
           setIsOpen(!isOpen);
           if (!isOpen) onRefresh();

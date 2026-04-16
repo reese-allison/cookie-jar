@@ -24,6 +24,7 @@ interface RoomViewProps {
   pulledNotes: Note[];
   isAdding: boolean;
   isViewer: boolean;
+  isOwner: boolean;
   showPulledBy: boolean;
   jarAppearance?: JarAppearance;
   onMouseMove: (x: number, y: number) => void;
@@ -46,6 +47,7 @@ export function RoomView({
   pulledNotes,
   isAdding,
   isViewer,
+  isOwner,
   showPulledBy,
   jarAppearance,
   onMouseMove,
@@ -92,12 +94,12 @@ export function RoomView({
         <span className="room-code">{room.code}</span>
         <span className="room-state">{room.state}</span>
         <div className="room-actions">
-          {!isViewer && room.state === "open" && (
+          {isOwner && room.state === "open" && (
             <button type="button" onClick={onLock}>
               Lock
             </button>
           )}
-          {!isViewer && room.state === "locked" && (
+          {isOwner && room.state === "locked" && (
             <button type="button" onClick={onUnlock}>
               Unlock
             </button>
@@ -131,6 +133,10 @@ export function RoomView({
             appearance={jarAppearance}
           />
         </div>
+
+        {inJarCount === 0 && pulledNotes.length === 0 && canInteract && (
+          <p className="empty-state">This jar is empty — add your first note below!</p>
+        )}
 
         <div className="pulled-notes">
           {pulledNotes.map((note) => (

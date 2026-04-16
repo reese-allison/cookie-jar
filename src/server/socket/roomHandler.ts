@@ -13,7 +13,9 @@ import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
 import type { SocketContext } from "./context";
+import { withErrorHandler } from "./errorHandler";
 import type { IdleTimeoutManager } from "./idleTimeout";
+import { clearSealedNotes } from "./noteHandler";
 import type { TypedServer } from "./server";
 
 // In-memory presence per room (ephemeral — not persisted to DB)
@@ -115,74 +117,86 @@ function startIdleTimeout(
   });
 }
 
+function validateRoomJoin(
+  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomByCode>>,
+): string | null {
+  if (!dbRoom) return "Room not found";
+  if (dbRoom.state === "closed") return "Room is closed";
+  if (dbRoom.state === "locked") return "Room is locked";
+  return null;
+}
+
 export function registerRoomHandlers(
   io: TypedServer,
   socket: TypedSocket,
   ctx: SocketContext,
   idleTimeouts?: IdleTimeoutManager,
 ): void {
-  socket.on("room:join", async (code, displayName) => {
-    if (!isValidDisplayName(displayName)) {
-      socket.emit("room:error", "Display name must be 1-30 characters");
-      return;
-    }
-    const dbRoom = await roomQueries.getRoomByCode(pool, code);
-    if (!dbRoom) {
-      socket.emit("room:error", "Room not found");
-      return;
-    }
-    if (dbRoom.state === "closed") {
-      socket.emit("room:error", "Room is closed");
-      return;
-    }
+  // biome-ignore lint/suspicious/noExplicitAny: socket handlers have varied signatures
+  const safe = (handler: (...args: any[]) => unknown) => withErrorHandler(socket, handler);
 
-    const roomId = dbRoom.id;
+  socket.on(
+    "room:join",
+    safe(async (code: string, displayName: string) => {
+      if (!isValidDisplayName(displayName)) {
+        socket.emit("room:error", "Display name must be 1-30 characters");
+        return;
+      }
+      const dbRoom = await roomQueries.getRoomByCode(pool, code);
+      const joinError = validateRoomJoin(dbRoom);
+      if (joinError || !dbRoom) {
+        socket.emit("room:error", joinError ?? "Room not found");
+        return;
+      }
 
-    if (!roomMembers.has(roomId)) {
-      roomMembers.set(roomId, new Map());
-    }
-    const members = roomMembers.get(roomId) ?? new Map();
+      const roomId = dbRoom.id;
 
-    if (members.size >= dbRoom.maxParticipants) {
-      socket.emit("room:error", "Room is full");
-      return;
-    }
+      if (!roomMembers.has(roomId)) {
+        roomMembers.set(roomId, new Map());
+      }
+      const members = roomMembers.get(roomId) ?? new Map();
 
-    const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
-    const jarConfig = jar?.config ?? null;
-    const role = determineRole(ctx, jar?.ownerId);
-    const effectiveName = ctx.displayName ?? displayName;
+      if (members.size >= dbRoom.maxParticipants) {
+        socket.emit("room:error", "Room is full");
+        return;
+      }
 
-    const member: RoomMember = {
-      id: socket.id,
-      displayName: effectiveName,
-      role,
-      color: assignColor(roomId),
-      connectedAt: new Date().toISOString(),
-    };
+      const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
+      const jarConfig = jar?.config ?? null;
+      const role = determineRole(ctx, jar?.ownerId);
+      const effectiveName = ctx.displayName ?? displayName;
 
-    members.set(socket.id, member);
-    ctx.roomId = roomId;
-    ctx.jarId = dbRoom.jarId;
-    ctx.jarConfig = jarConfig;
-    ctx.memberId = socket.id;
-    ctx.displayName = effectiveName;
-    ctx.role = role;
+      const member: RoomMember = {
+        id: socket.id,
+        displayName: effectiveName,
+        role,
+        color: assignColor(roomId),
+        connectedAt: new Date().toISOString(),
+      };
 
-    await socket.join(roomId);
-    socket.emit("room:state", buildRoomState(dbRoom, roomId));
-    const jarAppearance = jar?.appearance ?? null;
-    await sendNoteState(
-      socket,
-      dbRoom.jarId,
-      jarConfig?.pullVisibility === "private",
-      jarConfig,
-      jarAppearance,
-    );
-    socket.to(roomId).emit("room:member_joined", member);
+      members.set(socket.id, member);
+      ctx.roomId = roomId;
+      ctx.jarId = dbRoom.jarId;
+      ctx.jarConfig = jarConfig;
+      ctx.memberId = socket.id;
+      ctx.displayName = effectiveName;
+      ctx.role = role;
 
-    startIdleTimeout(io, idleTimeouts, roomId, dbRoom.idleTimeoutMinutes);
-  });
+      await socket.join(roomId);
+      socket.emit("room:state", buildRoomState(dbRoom, roomId));
+      const jarAppearance = jar?.appearance ?? null;
+      await sendNoteState(
+        socket,
+        dbRoom.jarId,
+        jarConfig?.pullVisibility === "private",
+        jarConfig,
+        jarAppearance,
+      );
+      socket.to(roomId).emit("room:member_joined", member);
+
+      startIdleTimeout(io, idleTimeouts, roomId, dbRoom.idleTimeoutMinutes);
+    }),
+  );
 
   socket.on("room:leave", () => handleLeave());
   socket.on("disconnect", () => handleLeave());
@@ -196,26 +210,32 @@ export function registerRoomHandlers(
     });
   });
 
-  socket.on("room:lock", async () => {
-    if (!ctx.roomId) return;
-    idleTimeouts?.resetActivity(ctx.roomId);
-    if (ctx.role !== "owner") {
-      socket.emit("room:error", "Only the room owner can lock the room");
-      return;
-    }
-    await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
-    io.to(ctx.roomId).emit("room:locked");
-  });
+  socket.on(
+    "room:lock",
+    safe(async () => {
+      if (!ctx.roomId) return;
+      idleTimeouts?.resetActivity(ctx.roomId);
+      if (ctx.role !== "owner") {
+        socket.emit("room:error", "Only the room owner can lock the room");
+        return;
+      }
+      await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
+      io.to(ctx.roomId).emit("room:locked");
+    }),
+  );
 
-  socket.on("room:unlock", async () => {
-    if (!ctx.roomId) return;
-    if (ctx.role !== "owner") {
-      socket.emit("room:error", "Only the room owner can unlock the room");
-      return;
-    }
-    await roomQueries.updateRoomState(pool, ctx.roomId, "open");
-    io.to(ctx.roomId).emit("room:unlocked");
-  });
+  socket.on(
+    "room:unlock",
+    safe(async () => {
+      if (!ctx.roomId) return;
+      if (ctx.role !== "owner") {
+        socket.emit("room:error", "Only the room owner can unlock the room");
+        return;
+      }
+      await roomQueries.updateRoomState(pool, ctx.roomId, "open");
+      io.to(ctx.roomId).emit("room:unlocked");
+    }),
+  );
 
   function handleLeave(): void {
     if (!ctx.roomId || !ctx.memberId) return;
@@ -226,6 +246,7 @@ export function registerRoomHandlers(
       if (members.size === 0) {
         roomMembers.delete(ctx.roomId);
         idleTimeouts?.stop(ctx.roomId);
+        clearSealedNotes(ctx.roomId);
       }
     }
 

@@ -39,6 +39,11 @@ export async function createNote(pool: pg.Pool, input: CreateNoteInput): Promise
   return rowToNote(rows[0]);
 }
 
+export async function getNoteById(pool: pg.Pool, noteId: string): Promise<Note | null> {
+  const { rows } = await pool.query("SELECT * FROM notes WHERE id = $1", [noteId]);
+  return rows.length > 0 ? rowToNote(rows[0]) : null;
+}
+
 export async function listNotesByJar(
   pool: pg.Pool,
   jarId: string,
