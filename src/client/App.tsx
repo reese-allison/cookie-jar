@@ -2,10 +2,12 @@ import { ConnectionStatus } from "./components/ConnectionStatus";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { RoomView } from "./components/RoomView";
 import { useSocket } from "./hooks/useSocket";
+import { useSession } from "./lib/auth-client";
 import { useNoteStore } from "./stores/noteStore";
 import { useRoomStore } from "./stores/roomStore";
 
 function App() {
+  const { data: session } = useSession();
   const { room, isConnected, isJoining, error, cursors } = useRoomStore();
   const { inJarCount, pulledNotes, isAdding } = useNoteStore();
   const {
@@ -20,8 +22,18 @@ function App() {
     returnNote,
   } = useSocket();
 
+  const user = session?.user
+    ? { displayName: session.user.name, image: session.user.image ?? undefined }
+    : null;
+
+  // Determine if current user is a viewer (find our member in the room)
+  const myMember = room?.members.find((m) =>
+    user ? m.displayName === user.displayName : m.role === "viewer",
+  );
+  const isViewer = myMember?.role === "viewer" || !session?.user;
+
   if (!room) {
-    return <RoomCodeEntry onJoin={joinRoom} isJoining={isJoining} error={error} />;
+    return <RoomCodeEntry onJoin={joinRoom} isJoining={isJoining} error={error} user={user} />;
   }
 
   return (
@@ -33,6 +45,7 @@ function App() {
         inJarCount={inJarCount}
         pulledNotes={pulledNotes}
         isAdding={isAdding}
+        isViewer={isViewer}
         onMouseMove={moveCursor}
         onLock={lockRoom}
         onUnlock={unlockRoom}

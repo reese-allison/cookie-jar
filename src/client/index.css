@@ -116,6 +116,85 @@ body {
   text-align: center;
 }
 
+.room-code-entry__auth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.room-code-entry__guest-note {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+/* ---- Auth Buttons ---- */
+
+.auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+}
+
+.auth-button {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  border: 1px solid #d4c5a9;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.auth-button:hover {
+  background: #f5efe6;
+}
+
+/* ---- User Menu ---- */
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.user-menu__avatar {
+  border-radius: 50%;
+}
+
+.user-menu__name {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.user-menu__signout {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #d4c5a9;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: #888;
+}
+
+/* ---- Viewer Notice ---- */
+
+.viewer-notice {
+  font-size: 0.875rem;
+  color: #888;
+  text-align: center;
+  padding: 1rem;
+  border: 1px dashed #d4c5a9;
+  border-radius: 8px;
+}
+
 /* ---- Room View ---- */
 
 .room-view {

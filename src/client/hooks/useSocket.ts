@@ -38,6 +38,7 @@ export function useSocket() {
     const socket: TypedSocket = io({
       autoConnect: false,
       transports: ["websocket"],
+      withCredentials: true,
     });
 
     socketRef.current = socket;

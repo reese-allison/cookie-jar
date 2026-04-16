@@ -14,6 +14,7 @@ interface RoomViewProps {
   inJarCount: number;
   pulledNotes: Note[];
   isAdding: boolean;
+  isViewer: boolean;
   onMouseMove: (x: number, y: number) => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -30,6 +31,7 @@ export function RoomView({
   inJarCount,
   pulledNotes,
   isAdding,
+  isViewer,
   onMouseMove,
   onLock,
   onUnlock,
@@ -63,6 +65,7 @@ export function RoomView({
   };
 
   const isLocked = room.state === "locked";
+  const canInteract = !isViewer && !isLocked;
 
   return (
     <div className="room-view">
@@ -100,7 +103,7 @@ export function RoomView({
         <div ref={jarRef}>
           <Jar
             noteCount={inJarCount}
-            isLocked={isLocked}
+            isLocked={!canInteract}
             onPull={onPull}
             isHighlighted={hoverTarget === "jar"}
           />
@@ -123,9 +126,11 @@ export function RoomView({
           ))}
         </div>
 
-        {!isLocked && <NoteForm onSubmit={onAddNote} disabled={isAdding} />}
+        {canInteract && <NoteForm onSubmit={onAddNote} disabled={isAdding} />}
 
-        <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />
+        {isViewer && <p className="viewer-notice">Sign in to participate</p>}
+
+        {canInteract && <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />}
 
         {/* Remote cursors */}
         {[...cursors.entries()].map(([userId, cursor]) => {
