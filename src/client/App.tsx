@@ -9,7 +9,7 @@ import { useRoomStore } from "./stores/roomStore";
 function App() {
   const { data: session } = useSession();
   const { room, isConnected, isJoining, error, cursors } = useRoomStore();
-  const { inJarCount, pulledNotes, isAdding } = useNoteStore();
+  const { inJarCount, pulledNotes, isAdding, jarConfig, history } = useNoteStore();
   const {
     joinRoom,
     leaveRoom,
@@ -20,6 +20,8 @@ function App() {
     pullNote,
     discardNote,
     returnNote,
+    getHistory,
+    clearHistory,
   } = useSocket();
 
   const user = session?.user
@@ -46,6 +48,7 @@ function App() {
         pulledNotes={pulledNotes}
         isAdding={isAdding}
         isViewer={isViewer}
+        showPulledBy={jarConfig?.showPulledBy ?? false}
         onMouseMove={moveCursor}
         onLock={lockRoom}
         onUnlock={unlockRoom}
@@ -54,6 +57,9 @@ function App() {
         onPull={pullNote}
         onDiscard={discardNote}
         onReturn={returnNote}
+        history={history}
+        onGetHistory={getHistory}
+        onClearHistory={!isViewer ? clearHistory : undefined}
       />
     </>
   );

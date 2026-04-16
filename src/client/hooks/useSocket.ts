@@ -29,6 +29,7 @@ export function useSocket() {
     notePulled,
     noteDiscarded,
     noteReturned,
+    setHistory,
     setAdding,
     setPulling,
   } = useNoteStore();
@@ -62,7 +63,7 @@ export function useSocket() {
 
     // Note events
     socket.on("note:state", (state) =>
-      setNoteState(state.inJarCount, state.pulledNotes, state.pullCounts),
+      setNoteState(state.inJarCount, state.pulledNotes, state.pullCounts, state.jarConfig),
     );
     socket.on("note:added", (note, inJarCount) => noteAdded(note, inJarCount));
     socket.on("note:pulled", (note) => {
@@ -71,6 +72,7 @@ export function useSocket() {
     socket.on("note:discarded", (noteId) => noteDiscarded(noteId));
     socket.on("note:returned", (noteId, inJarCount) => noteReturned(noteId, inJarCount));
     socket.on("pull:rejected", () => setPulling(false));
+    socket.on("history:list", (entries) => setHistory(entries));
 
     return () => {
       socket.disconnect();
@@ -90,6 +92,7 @@ export function useSocket() {
     noteDiscarded,
     noteReturned,
     setPulling,
+    setHistory,
   ]);
 
   const joinRoom = useCallback(
@@ -151,6 +154,14 @@ export function useSocket() {
     socketRef.current?.emit("note:return", noteId);
   }, []);
 
+  const getHistory = useCallback(() => {
+    socketRef.current?.emit("history:get");
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    socketRef.current?.emit("history:clear");
+  }, []);
+
   return {
     joinRoom,
     leaveRoom,
@@ -161,5 +172,7 @@ export function useSocket() {
     pullNote,
     discardNote,
     returnNote,
+    getHistory,
+    clearHistory,
   };
 }

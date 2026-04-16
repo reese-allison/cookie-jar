@@ -2,6 +2,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
+import * as pullHistoryQueries from "../db/queries/pullHistory";
 import type { SocketContext } from "./context";
 import type { TypedServer } from "./server";
 
@@ -47,6 +48,14 @@ export function registerNoteHandlers(
       return;
     }
 
+    // Record in pull history
+    await pullHistoryQueries.recordPull(pool, {
+      jarId: ctx.jarId,
+      noteId: note.id,
+      pulledBy,
+      roomId: ctx.roomId ?? undefined,
+    });
+
     const isPrivate = ctx.jarConfig?.pullVisibility === "private";
 
     if (isPrivate) {
@@ -82,5 +91,29 @@ export function registerNoteHandlers(
 
     const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
     io.to(ctx.roomId).emit("note:returned", noteId, inJarCount);
+  });
+
+  socket.on("history:get", async () => {
+    if (!ctx.jarId) return;
+    const entries = await pullHistoryQueries.getHistory(pool, ctx.jarId);
+    socket.emit(
+      "history:list",
+      entries.map((e) => ({
+        id: e.id,
+        noteText: e.noteText,
+        pulledBy: e.pulledBy,
+        pulledAt: e.pulledAt,
+      })),
+    );
+  });
+
+  socket.on("history:clear", async () => {
+    if (!ctx.jarId || !ctx.isAuthenticated) return;
+    if (ctx.role !== "owner") {
+      socket.emit("room:error", "Only the jar owner can clear history");
+      return;
+    }
+    await pullHistoryQueries.clearHistory(pool, ctx.jarId);
+    socket.emit("history:list", []);
   });
 }

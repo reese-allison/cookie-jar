@@ -99,6 +99,7 @@ export interface NoteStatePayload {
   inJarCount: number;
   pulledNotes: Note[];
   pullCounts?: Record<string, number>;
+  jarConfig?: JarConfig;
 }
 
 export interface ServerToClientEvents {
@@ -115,6 +116,14 @@ export interface ServerToClientEvents {
   "note:returned": (noteId: string, inJarCount: number) => void;
   "pull:rejected": (reason: string) => void;
   "room:error": (error: string) => void;
+  "history:list": (entries: PullHistoryEntry[]) => void;
+}
+
+export interface PullHistoryEntry {
+  id: string;
+  noteText: string;
+  pulledBy: string;
+  pulledAt: string;
 }
 
 export interface ClientToServerEvents {
@@ -127,4 +136,6 @@ export interface ClientToServerEvents {
   "note:pull": () => void;
   "note:discard": (noteId: string) => void;
   "note:return": (noteId: string) => void;
+  "history:get": () => void;
+  "history:clear": () => void;
 }

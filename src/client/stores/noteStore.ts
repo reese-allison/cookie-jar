@@ -1,10 +1,12 @@
-import type { Note } from "@shared/types";
+import type { JarConfig, Note, PullHistoryEntry } from "@shared/types";
 import { create } from "zustand";
 
 interface NoteStore {
   inJarCount: number;
   pulledNotes: Note[];
   pullCounts: Record<string, number>;
+  jarConfig: JarConfig | null;
+  history: PullHistoryEntry[];
   isAdding: boolean;
   isPulling: boolean;
 
@@ -13,11 +15,13 @@ interface NoteStore {
     inJarCount: number,
     pulledNotes: Note[],
     pullCounts?: Record<string, number>,
+    jarConfig?: JarConfig,
   ) => void;
   noteAdded: (note: Note, inJarCount: number) => void;
   notePulled: (note: Note) => void;
   noteDiscarded: (noteId: string) => void;
   noteReturned: (noteId: string, inJarCount: number) => void;
+  setHistory: (entries: PullHistoryEntry[]) => void;
   setAdding: (adding: boolean) => void;
   setPulling: (pulling: boolean) => void;
   reset: () => void;
@@ -27,6 +31,8 @@ const initialState = {
   inJarCount: 0,
   pulledNotes: [] as Note[],
   pullCounts: {} as Record<string, number>,
+  jarConfig: null as JarConfig | null,
+  history: [] as PullHistoryEntry[],
   isAdding: false,
   isPulling: false,
 };
@@ -34,11 +40,12 @@ const initialState = {
 export const useNoteStore = create<NoteStore>((set) => ({
   ...initialState,
 
-  setNoteState: (inJarCount, pulledNotes, pullCounts) =>
+  setNoteState: (inJarCount, pulledNotes, pullCounts, jarConfig) =>
     set({
       inJarCount,
       pulledNotes,
       ...(pullCounts !== undefined ? { pullCounts } : {}),
+      ...(jarConfig !== undefined ? { jarConfig } : {}),
     }),
 
   noteAdded: (_note, inJarCount) => set({ inJarCount, isAdding: false }),
@@ -61,6 +68,7 @@ export const useNoteStore = create<NoteStore>((set) => ({
       inJarCount,
     })),
 
+  setHistory: (history) => set({ history }),
   setAdding: (isAdding) => set({ isAdding }),
   setPulling: (isPulling) => set({ isPulling }),
   reset: () => set(initialState),

@@ -6,6 +6,7 @@ import { PulledNote } from "./PulledNote";
 
 interface DraggablePulledNoteProps {
   note: Note;
+  showPulledBy?: boolean;
   onDiscard: (noteId: string) => void;
   onReturn: (noteId: string) => void;
   onHover: (target: DropTarget) => void;
@@ -15,6 +16,7 @@ interface DraggablePulledNoteProps {
 
 export function DraggablePulledNote({
   note,
+  showPulledBy,
   onDiscard,
   onReturn,
   onHover,
@@ -50,7 +52,12 @@ export function DraggablePulledNote({
         cursor: "grab",
       }}
     >
-      <PulledNote note={note} onDiscard={onDiscard} onReturn={onReturn} />
+      <PulledNote
+        note={note}
+        showPulledBy={showPulledBy}
+        onDiscard={onDiscard}
+        onReturn={onReturn}
+      />
     </animated.div>
   );
 }

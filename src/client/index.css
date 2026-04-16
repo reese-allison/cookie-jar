@@ -195,6 +195,84 @@ body {
   border-radius: 8px;
 }
 
+/* ---- Pull History ---- */
+
+.pull-history {
+  position: relative;
+}
+
+.pull-history__toggle {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #d4c5a9;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pull-history__panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+  width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d4c5a9;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  padding: 0.75rem;
+  z-index: 100;
+}
+
+.pull-history__empty {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.pull-history__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pull-history__entry {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  border-bottom: 1px solid #f0ebe0;
+}
+
+.pull-history__text {
+  font-family: "Caveat", cursive;
+  font-size: 1rem;
+  color: #3a3a3a;
+}
+
+.pull-history__meta {
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.pull-history__clear {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #d4c5a9;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: #d32f2f;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
 /* ---- Room View ---- */
 
 .room-view {
@@ -455,6 +533,14 @@ body {
   word-break: break-all;
   display: block;
   margin-bottom: 0.5rem;
+}
+
+.pulled-note__pulled-by {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.7rem;
+  color: #888;
+  margin-bottom: 0.25rem;
+  font-style: italic;
 }
 
 .pulled-note__actions {

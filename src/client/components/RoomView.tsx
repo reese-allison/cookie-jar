@@ -1,4 +1,4 @@
-import type { CursorPosition, Note, NoteStyle, Room } from "@shared/types";
+import type { CursorPosition, Note, NoteStyle, PullHistoryEntry, Room } from "@shared/types";
 import { useCallback, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
@@ -7,6 +7,7 @@ import { DiscardBin } from "./DiscardBin";
 import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
 import { NoteForm } from "./NoteForm";
+import { PullHistory } from "./PullHistory";
 
 interface RoomViewProps {
   room: Room;
@@ -15,6 +16,7 @@ interface RoomViewProps {
   pulledNotes: Note[];
   isAdding: boolean;
   isViewer: boolean;
+  showPulledBy: boolean;
   onMouseMove: (x: number, y: number) => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -23,6 +25,9 @@ interface RoomViewProps {
   onPull: () => void;
   onDiscard: (noteId: string) => void;
   onReturn: (noteId: string) => void;
+  history: PullHistoryEntry[];
+  onGetHistory: () => void;
+  onClearHistory?: () => void;
 }
 
 export function RoomView({
@@ -32,6 +37,7 @@ export function RoomView({
   pulledNotes,
   isAdding,
   isViewer,
+  showPulledBy,
   onMouseMove,
   onLock,
   onUnlock,
@@ -40,6 +46,9 @@ export function RoomView({
   onPull,
   onDiscard,
   onReturn,
+  history,
+  onGetHistory,
+  onClearHistory,
 }: RoomViewProps) {
   const jarRef = useRef<HTMLDivElement>(null);
   const discardRef = useRef<HTMLDivElement>(null);
@@ -86,6 +95,7 @@ export function RoomView({
             Leave
           </button>
         </div>
+        <PullHistory entries={history} onRefresh={onGetHistory} onClear={onClearHistory} />
       </header>
 
       <div className="room-members">
@@ -114,6 +124,7 @@ export function RoomView({
             <DraggablePulledNote
               key={note.id}
               note={note}
+              showPulledBy={showPulledBy}
               onDiscard={onDiscard}
               onReturn={onReturn}
               onHover={(target) => {
