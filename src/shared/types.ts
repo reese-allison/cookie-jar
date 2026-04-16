@@ -108,6 +108,7 @@ export interface ServerToClientEvents {
   "note:discarded": (noteId: string) => void;
   "note:returned": (noteId: string, inJarCount: number) => void;
   "pull:rejected": (reason: string) => void;
+  "room:error": (error: string) => void;
 }
 
 export interface ClientToServerEvents {

@@ -229,3 +229,22 @@ describe("room lock/unlock", () => {
     await unlockPromise;
   });
 });
+
+describe("room errors", () => {
+  it("emits error when joining a non-existent room", async () => {
+    const client = ioClient(`http://localhost:${port}`, {
+      autoConnect: false,
+      transports: ["websocket"],
+    });
+    clients.push(client);
+
+    client.connect();
+    await new Promise<void>((resolve) => client.on("connect", resolve));
+
+    const errorPromise = waitForEvent(client, "room:error");
+    client.emit("room:join", "ZZZZZZ", "Ghost");
+
+    const [error] = await errorPromise;
+    expect(error).toContain("not found");
+  });
+});

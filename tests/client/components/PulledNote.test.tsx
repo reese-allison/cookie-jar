@@ -45,4 +45,13 @@ describe("PulledNote component", () => {
     fireEvent.click(screen.getByRole("button", { name: /return/i }));
     expect(onReturn).toHaveBeenCalledWith("note-1");
   });
+
+  it("has accessible buttons that can be focused with keyboard", () => {
+    render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={vi.fn()} />);
+    const returnBtn = screen.getByRole("button", { name: /return/i });
+    const discardBtn = screen.getByRole("button", { name: /discard/i });
+    // Buttons are natively focusable and keyboard-operable
+    expect(returnBtn.tabIndex).not.toBe(-1);
+    expect(discardBtn.tabIndex).not.toBe(-1);
+  });
 });

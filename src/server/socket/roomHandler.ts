@@ -66,8 +66,14 @@ export function registerRoomHandlers(
 ): void {
   socket.on("room:join", async (code, displayName) => {
     const dbRoom = await roomQueries.getRoomByCode(pool, code);
-    if (!dbRoom) return;
-    if (dbRoom.state === "closed") return;
+    if (!dbRoom) {
+      socket.emit("room:error", "Room not found");
+      return;
+    }
+    if (dbRoom.state === "closed") {
+      socket.emit("room:error", "Room is closed");
+      return;
+    }
 
     const roomId = dbRoom.id;
 
@@ -76,7 +82,10 @@ export function registerRoomHandlers(
     }
     const members = roomMembers.get(roomId) ?? new Map();
 
-    if (members.size >= dbRoom.maxParticipants) return;
+    if (members.size >= dbRoom.maxParticipants) {
+      socket.emit("room:error", "Room is full");
+      return;
+    }
 
     const member: RoomMember = {
       id: socket.id,

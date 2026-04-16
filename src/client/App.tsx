@@ -1,3 +1,4 @@
+import { ConnectionStatus } from "./components/ConnectionStatus";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { RoomView } from "./components/RoomView";
 import { useSocket } from "./hooks/useSocket";
@@ -5,7 +6,7 @@ import { useNoteStore } from "./stores/noteStore";
 import { useRoomStore } from "./stores/roomStore";
 
 function App() {
-  const { room, isJoining, error, cursors } = useRoomStore();
+  const { room, isConnected, isJoining, error, cursors } = useRoomStore();
   const { inJarCount, pulledNotes, isAdding } = useNoteStore();
   const {
     joinRoom,
@@ -24,21 +25,24 @@ function App() {
   }
 
   return (
-    <RoomView
-      room={room}
-      cursors={cursors}
-      inJarCount={inJarCount}
-      pulledNotes={pulledNotes}
-      isAdding={isAdding}
-      onMouseMove={moveCursor}
-      onLock={lockRoom}
-      onUnlock={unlockRoom}
-      onLeave={leaveRoom}
-      onAddNote={addNote}
-      onPull={pullNote}
-      onDiscard={discardNote}
-      onReturn={returnNote}
-    />
+    <>
+      <ConnectionStatus isConnected={isConnected} hasRoom={!!room} />
+      <RoomView
+        room={room}
+        cursors={cursors}
+        inJarCount={inJarCount}
+        pulledNotes={pulledNotes}
+        isAdding={isAdding}
+        onMouseMove={moveCursor}
+        onLock={lockRoom}
+        onUnlock={unlockRoom}
+        onLeave={leaveRoom}
+        onAddNote={addNote}
+        onPull={pullNote}
+        onDiscard={discardNote}
+        onReturn={returnNote}
+      />
+    </>
   );
 }
 

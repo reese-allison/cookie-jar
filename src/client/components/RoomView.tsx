@@ -2,6 +2,7 @@ import type { CursorPosition, Note, NoteStyle, Room } from "@shared/types";
 import { useCallback, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
+import { Cursor } from "./Cursor";
 import { DiscardBin } from "./DiscardBin";
 import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
@@ -127,23 +128,19 @@ export function RoomView({
         <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />
 
         {/* Remote cursors */}
-        {[...cursors.entries()].map(([userId, cursor]) => (
-          <div
-            key={userId}
-            className="cursor"
-            style={{
-              position: "absolute",
-              left: cursor.x,
-              top: cursor.y,
-              pointerEvents: "none",
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <title>cursor</title>
-              <path d="M0 0L12 8L6 9L4 15Z" fill="currentColor" />
-            </svg>
-          </div>
-        ))}
+        {[...cursors.entries()].map(([userId, cursor]) => {
+          const member = room.members.find((m) => m.id === userId);
+          if (!member) return null;
+          return (
+            <Cursor
+              key={userId}
+              x={cursor.x}
+              y={cursor.y}
+              displayName={member.displayName}
+              color={member.color}
+            />
+          );
+        })}
       </div>
     </div>
   );

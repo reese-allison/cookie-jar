@@ -11,8 +11,16 @@ export function useSocket() {
   const socketRef = useRef<TypedSocket | null>(null);
   const throttleRef = useRef<number>(0);
 
-  const { setRoom, setConnected, setJoining, addMember, removeMember, setCursor, setLocked } =
-    useRoomStore();
+  const {
+    setRoom,
+    setConnected,
+    setJoining,
+    setError,
+    addMember,
+    removeMember,
+    setCursor,
+    setLocked,
+  } = useRoomStore();
   const roomReset = useRoomStore((s) => s.reset);
 
   const {
@@ -34,15 +42,17 @@ export function useSocket() {
 
     socketRef.current = socket;
 
-    socket.on("connect", () => setConnected(true));
+    socket.on("connect", () => {
+      setConnected(true);
+      setError(null);
+    });
     socket.on("disconnect", () => {
       setConnected(false);
-      roomReset();
-      noteReset();
     });
 
     // Room events
     socket.on("room:state", (room) => setRoom(room));
+    socket.on("room:error", (error) => setError(error));
     socket.on("room:member_joined", (member) => addMember(member));
     socket.on("room:member_left", (memberId) => removeMember(memberId));
     socket.on("room:locked", () => setLocked(true));
@@ -66,18 +76,17 @@ export function useSocket() {
   }, [
     setRoom,
     setConnected,
+    setError,
     addMember,
     removeMember,
     setCursor,
     setLocked,
-    roomReset,
     setNoteState,
     noteAdded,
     notePulled,
     noteDiscarded,
     noteReturned,
     setPulling,
-    noteReset,
   ]);
 
   const joinRoom = useCallback(

@@ -8,7 +8,7 @@ interface PulledNoteProps {
 
 export function PulledNote({ note, onDiscard, onReturn }: PulledNoteProps) {
   return (
-    <div className="pulled-note">
+    <article className="pulled-note" aria-label={`Note: ${note.text}`}>
       <p className="pulled-note__text">{note.text}</p>
       {note.url && (
         <a className="pulled-note__url" href={note.url} target="_blank" rel="noopener noreferrer">
@@ -23,6 +23,6 @@ export function PulledNote({ note, onDiscard, onReturn }: PulledNoteProps) {
           Discard
         </button>
       </div>
-    </div>
+    </article>
   );
 }
