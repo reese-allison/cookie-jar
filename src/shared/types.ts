@@ -11,7 +11,7 @@ export interface Note {
   url?: string;
   style: NoteStyle;
   state: NoteState;
-  authorId: string;
+  authorId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -90,6 +90,11 @@ export interface CursorPosition {
   userId: string;
 }
 
+export interface NoteStatePayload {
+  inJarCount: number;
+  pulledNotes: Note[];
+}
+
 export interface ServerToClientEvents {
   "room:state": (room: Room) => void;
   "room:member_joined": (member: RoomMember) => void;
@@ -97,10 +102,11 @@ export interface ServerToClientEvents {
   "room:locked": () => void;
   "room:unlocked": () => void;
   "cursor:moved": (cursor: CursorPosition) => void;
-  "note:added": (note: Note) => void;
+  "note:state": (state: NoteStatePayload) => void;
+  "note:added": (note: Note, inJarCount: number) => void;
   "note:pulled": (note: Note, pulledBy: string) => void;
   "note:discarded": (noteId: string) => void;
-  "note:returned": (note: Note) => void;
+  "note:returned": (noteId: string, inJarCount: number) => void;
   "pull:rejected": (reason: string) => void;
 }
 

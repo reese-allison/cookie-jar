@@ -6,7 +6,7 @@ interface CreateNoteInput {
   text: string;
   url?: string;
   style: NoteStyle;
-  authorId: string;
+  authorId?: string;
 }
 
 interface UpdateNoteInput {
@@ -113,6 +113,18 @@ export async function pullRandomNote(pool: pg.Pool, jarId: string): Promise<Note
     [jarId],
   );
   return rows.length > 0 ? rowToNote(rows[0]) : null;
+}
+
+export async function countNotesByState(
+  pool: pg.Pool,
+  jarId: string,
+  state: NoteState,
+): Promise<number> {
+  const { rows } = await pool.query(
+    "SELECT count(*)::int AS count FROM notes WHERE jar_id = $1 AND state = $2",
+    [jarId, state],
+  );
+  return rows[0].count;
 }
 
 export async function deleteNote(pool: pg.Pool, noteId: string): Promise<boolean> {

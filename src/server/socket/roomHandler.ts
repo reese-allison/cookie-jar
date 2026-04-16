@@ -1,7 +1,9 @@
 import type { ClientToServerEvents, Room, RoomMember, ServerToClientEvents } from "@shared/types";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
+import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
+import type { SocketContext } from "./context";
 import type { TypedServer } from "./server";
 
 // In-memory presence per room (ephemeral — not persisted to DB)
@@ -57,34 +59,25 @@ function buildRoomState(dbRoom: DbRoom, roomId: string): Room {
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
-export function registerRoomHandlers(io: TypedServer, socket: TypedSocket): void {
-  let currentRoomId: string | null = null;
-  let currentMemberId: string | null = null;
-
+export function registerRoomHandlers(
+  io: TypedServer,
+  socket: TypedSocket,
+  ctx: SocketContext,
+): void {
   socket.on("room:join", async (code, displayName) => {
     const dbRoom = await roomQueries.getRoomByCode(pool, code);
-    if (!dbRoom) {
-      return;
-    }
-
-    if (dbRoom.state === "closed") {
-      return;
-    }
+    if (!dbRoom) return;
+    if (dbRoom.state === "closed") return;
 
     const roomId = dbRoom.id;
 
-    // Initialize room members map if needed
     if (!roomMembers.has(roomId)) {
       roomMembers.set(roomId, new Map());
     }
     const members = roomMembers.get(roomId) ?? new Map();
 
-    // Check capacity
-    if (members.size >= dbRoom.maxParticipants) {
-      return;
-    }
+    if (members.size >= dbRoom.maxParticipants) return;
 
-    // Create member
     const member: RoomMember = {
       id: socket.id,
       displayName,
@@ -94,62 +87,65 @@ export function registerRoomHandlers(io: TypedServer, socket: TypedSocket): void
     };
 
     members.set(socket.id, member);
-    currentRoomId = roomId;
-    currentMemberId = socket.id;
+    ctx.roomId = roomId;
+    ctx.jarId = dbRoom.jarId;
+    ctx.memberId = socket.id;
 
-    // Join the Socket.io room
     await socket.join(roomId);
 
-    // Send full room state to the joining user
+    // Send room state
     socket.emit("room:state", buildRoomState(dbRoom, roomId));
 
-    // Broadcast to others that someone joined
+    // Send current note state (in-jar count + pulled notes)
+    const [inJarCount, pulledNotes] = await Promise.all([
+      noteQueries.countNotesByState(pool, dbRoom.jarId, "in_jar"),
+      noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled"),
+    ]);
+    socket.emit("note:state", { inJarCount, pulledNotes });
+
+    // Broadcast join to others
     socket.to(roomId).emit("room:member_joined", member);
   });
 
-  socket.on("room:leave", () => {
-    handleLeave();
-  });
-
-  socket.on("disconnect", () => {
-    handleLeave();
-  });
+  socket.on("room:leave", () => handleLeave());
+  socket.on("disconnect", () => handleLeave());
 
   socket.on("cursor:move", (position) => {
-    if (!currentRoomId) return;
-    socket.volatile.to(currentRoomId).emit("cursor:moved", {
+    if (!ctx.roomId) return;
+    socket.volatile.to(ctx.roomId).emit("cursor:moved", {
       ...position,
       userId: socket.id,
     });
   });
 
   socket.on("room:lock", async () => {
-    if (!currentRoomId) return;
-    await roomQueries.updateRoomState(pool, currentRoomId, "locked");
-    io.to(currentRoomId).emit("room:locked");
+    if (!ctx.roomId) return;
+    await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
+    io.to(ctx.roomId).emit("room:locked");
   });
 
   socket.on("room:unlock", async () => {
-    if (!currentRoomId) return;
-    await roomQueries.updateRoomState(pool, currentRoomId, "open");
-    io.to(currentRoomId).emit("room:unlocked");
+    if (!ctx.roomId) return;
+    await roomQueries.updateRoomState(pool, ctx.roomId, "open");
+    io.to(ctx.roomId).emit("room:unlocked");
   });
 
   function handleLeave(): void {
-    if (!currentRoomId || !currentMemberId) return;
+    if (!ctx.roomId || !ctx.memberId) return;
 
-    const members = roomMembers.get(currentRoomId);
+    const members = roomMembers.get(ctx.roomId);
     if (members) {
-      members.delete(currentMemberId);
+      members.delete(ctx.memberId);
       if (members.size === 0) {
-        roomMembers.delete(currentRoomId);
+        roomMembers.delete(ctx.roomId);
       }
     }
 
-    socket.to(currentRoomId).emit("room:member_left", currentMemberId);
-    socket.leave(currentRoomId);
+    socket.to(ctx.roomId).emit("room:member_left", ctx.memberId);
+    socket.leave(ctx.roomId);
 
-    currentRoomId = null;
-    currentMemberId = null;
+    ctx.roomId = null;
+    ctx.jarId = null;
+    ctx.memberId = null;
   }
 }

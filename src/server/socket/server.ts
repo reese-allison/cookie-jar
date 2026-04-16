@@ -3,6 +3,8 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
 import { createAdapter } from "@socket.io/redis-adapter";
 import Redis from "ioredis";
 import { Server } from "socket.io";
+import { createSocketContext } from "./context";
+import { registerNoteHandlers } from "./noteHandler";
 import { registerRoomHandlers } from "./roomHandler";
 
 export type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -21,7 +23,9 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   io.adapter(createAdapter(pubClient, subClient));
 
   io.on("connection", (socket) => {
-    registerRoomHandlers(io, socket);
+    const ctx = createSocketContext();
+    registerRoomHandlers(io, socket, ctx);
+    registerNoteHandlers(io, socket, ctx);
   });
 
   return io;

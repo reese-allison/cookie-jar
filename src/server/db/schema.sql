@@ -30,7 +30,7 @@ CREATE TABLE notes (
   url TEXT,
   style TEXT NOT NULL DEFAULT 'sticky',
   state TEXT NOT NULL DEFAULT 'in_jar' CHECK (state IN ('in_jar', 'pulled', 'discarded')),
-  author_id UUID NOT NULL REFERENCES users(id),
+  author_id UUID REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

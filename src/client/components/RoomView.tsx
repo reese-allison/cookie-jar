@@ -1,19 +1,45 @@
-import type { CursorPosition, Room } from "@shared/types";
+import type { CursorPosition, Note, NoteStyle, Room } from "@shared/types";
+import { Jar } from "./Jar";
+import { NoteForm } from "./NoteForm";
+import { PulledNote } from "./PulledNote";
 
 interface RoomViewProps {
   room: Room;
   cursors: Map<string, CursorPosition>;
+  inJarCount: number;
+  pulledNotes: Note[];
+  isAdding: boolean;
   onMouseMove: (x: number, y: number) => void;
   onLock: () => void;
   onUnlock: () => void;
   onLeave: () => void;
+  onAddNote: (note: { text: string; url?: string; style: NoteStyle }) => void;
+  onPull: () => void;
+  onDiscard: (noteId: string) => void;
+  onReturn: (noteId: string) => void;
 }
 
-export function RoomView({ room, cursors, onMouseMove, onLock, onUnlock, onLeave }: RoomViewProps) {
+export function RoomView({
+  room,
+  cursors,
+  inJarCount,
+  pulledNotes,
+  isAdding,
+  onMouseMove,
+  onLock,
+  onUnlock,
+  onLeave,
+  onAddNote,
+  onPull,
+  onDiscard,
+  onReturn,
+}: RoomViewProps) {
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
     onMouseMove(e.clientX - rect.left, e.clientY - rect.top);
   };
+
+  const isLocked = room.state === "locked";
 
   return (
     <div className="room-view">
@@ -48,10 +74,15 @@ export function RoomView({ room, cursors, onMouseMove, onLock, onUnlock, onLeave
       </div>
 
       <div className="room-scene" role="application" onMouseMove={handleMouseMove}>
-        {/* Jar and notes will go here in Phase 3 */}
-        <div className="jar-placeholder">
-          <p>Jar goes here</p>
+        <Jar noteCount={inJarCount} isLocked={isLocked} onPull={onPull} />
+
+        <div className="pulled-notes">
+          {pulledNotes.map((note) => (
+            <PulledNote key={note.id} note={note} onDiscard={onDiscard} onReturn={onReturn} />
+          ))}
         </div>
+
+        {!isLocked && <NoteForm onSubmit={onAddNote} disabled={isAdding} />}
 
         {/* Remote cursors */}
         {[...cursors.entries()].map(([userId, cursor]) => (
