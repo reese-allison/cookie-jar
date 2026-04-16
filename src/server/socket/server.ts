@@ -25,6 +25,8 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
   const pubClient = new Redis(redisUrl);
   const subClient = pubClient.duplicate();
+  pubClient.on("error", (err) => console.error("Redis pub error:", err.message));
+  subClient.on("error", (err) => console.error("Redis sub error:", err.message));
   io.adapter(createAdapter(pubClient, subClient));
 
   // Idle timeout manager for auto-closing inactive rooms

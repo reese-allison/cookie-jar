@@ -17,6 +17,7 @@ export function useSocket() {
     setConnected,
     setJoining,
     setError,
+    setMyId,
     addMember,
     removeMember,
     setCursor,
@@ -49,10 +50,12 @@ export function useSocket() {
 
     socket.on("connect", () => {
       setConnected(true);
+      setMyId(socket.id ?? null);
       setError(null);
     });
     socket.on("disconnect", () => {
       setConnected(false);
+      setMyId(null);
     });
 
     // Room events
@@ -107,8 +110,8 @@ export function useSocket() {
       soundManager.play("noteReturn");
     });
     socket.on("pull:rejected", () => setPulling(false));
-    socket.on("note:sealed", (_pulledBy, sealedCount, revealAt) =>
-      noteSealed(sealedCount, revealAt),
+    socket.on("note:sealed", (_pulledBy, sealedCount, revealAt, inJarCount) =>
+      noteSealed(sealedCount, revealAt, inJarCount),
     );
     socket.on("note:reveal", (notes) => {
       notesRevealed(notes);
@@ -124,6 +127,7 @@ export function useSocket() {
     setRoom,
     setConnected,
     setError,
+    setMyId,
     addMember,
     removeMember,
     setCursor,

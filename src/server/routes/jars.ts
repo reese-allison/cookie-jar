@@ -1,21 +1,31 @@
 import { Router } from "express";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
-import { type AuthenticatedRequest, requireAuth } from "../middleware/requireAuth";
+import { type AuthenticatedRequest, getUser, requireAuth } from "../middleware/requireAuth";
 
 export const jarRouter = Router();
+
+const MAX_JAR_NAME_LENGTH = 100;
+
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
 
 // Create a jar (requires auth — ownerId comes from session)
 jarRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { name, appearance, config } = req.body;
-    if (!name) {
+    if (typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" });
       return;
     }
+    if (name.length > MAX_JAR_NAME_LENGTH) {
+      res.status(400).json({ error: `name must be ${MAX_JAR_NAME_LENGTH} characters or fewer` });
+      return;
+    }
     const jar = await jarQueries.createJar(pool, {
-      ownerId: req.user?.id,
-      name,
+      ownerId: getUser(req).id,
+      name: name.trim(),
       appearance,
       config,
     });
@@ -28,7 +38,7 @@ jarRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
 // Get a jar by ID (public)
 jarRouter.get("/:id", async (req, res) => {
   try {
-    const jar = await jarQueries.getJarById(pool, req.params.id);
+    const jar = await jarQueries.getJarById(pool, asString(req.params.id));
     if (!jar) {
       res.status(404).json({ error: "Jar not found" });
       return;
@@ -42,7 +52,7 @@ jarRouter.get("/:id", async (req, res) => {
 // List jars by owner (public)
 jarRouter.get("/", async (req, res) => {
   try {
-    const ownerId = req.query.ownerId as string;
+    const ownerId = asString(req.query.ownerId);
     if (!ownerId) {
       res.status(400).json({ error: "ownerId query parameter is required" });
       return;
@@ -67,16 +77,17 @@ jarRouter.get("/templates/list", async (_req, res) => {
 // Clone/fork a jar (requires auth)
 jarRouter.post("/:id/clone", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const source = await jarQueries.getJarById(pool, req.params.id);
+    const jarId = asString(req.params.id);
+    const source = await jarQueries.getJarById(pool, jarId);
     if (!source) {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (!source.isTemplate && !source.isPublic && source.ownerId !== req.user?.id) {
+    if (!source.isTemplate && !source.isPublic && source.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "This jar cannot be cloned" });
       return;
     }
-    const cloned = await jarQueries.cloneJar(pool, req.params.id, req.user?.id ?? "");
+    const cloned = await jarQueries.cloneJar(pool, jarId, getUser(req).id);
     res.status(201).json(cloned);
   } catch (_err) {
     res.status(500).json({ error: "Failed to clone jar" });
@@ -86,17 +97,32 @@ jarRouter.post("/:id/clone", requireAuth, async (req: AuthenticatedRequest, res)
 // Update a jar (requires auth + owner)
 jarRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const jar = await jarQueries.getJarById(pool, req.params.id);
+    const jarId = asString(req.params.id);
+    const jar = await jarQueries.getJarById(pool, jarId);
     if (!jar) {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (jar.ownerId !== req.user?.id) {
+    if (jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can update it" });
       return;
     }
     const { name, appearance, config } = req.body;
-    const updated = await jarQueries.updateJar(pool, req.params.id, { name, appearance, config });
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({ error: "name must be a non-empty string" });
+        return;
+      }
+      if (name.length > MAX_JAR_NAME_LENGTH) {
+        res.status(400).json({ error: `name must be ${MAX_JAR_NAME_LENGTH} characters or fewer` });
+        return;
+      }
+    }
+    const updated = await jarQueries.updateJar(pool, jarId, {
+      name: typeof name === "string" ? name.trim() : undefined,
+      appearance,
+      config,
+    });
     res.json(updated);
   } catch (_err) {
     res.status(500).json({ error: "Failed to update jar" });
@@ -106,16 +132,17 @@ jarRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
 // Delete a jar (requires auth + owner)
 jarRouter.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const jar = await jarQueries.getJarById(pool, req.params.id);
+    const jarId = asString(req.params.id);
+    const jar = await jarQueries.getJarById(pool, jarId);
     if (!jar) {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (jar.ownerId !== req.user?.id) {
+    if (jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can delete it" });
       return;
     }
-    await jarQueries.deleteJar(pool, req.params.id);
+    await jarQueries.deleteJar(pool, jarId);
     res.status(204).send();
   } catch (_err) {
     res.status(500).json({ error: "Failed to delete jar" });

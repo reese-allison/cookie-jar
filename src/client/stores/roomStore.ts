@@ -7,6 +7,9 @@ interface RoomStore {
   isConnected: boolean;
   isJoining: boolean;
   error: string | null;
+  // Socket.io session id for this tab. Matches members[i].id and
+  // disambiguates the current user from peers with the same display name.
+  myId: string | null;
 
   // Cursors (ephemeral, from broadcasts)
   cursors: Map<string, CursorPosition>;
@@ -16,6 +19,7 @@ interface RoomStore {
   setConnected: (connected: boolean) => void;
   setJoining: (joining: boolean) => void;
   setError: (error: string | null) => void;
+  setMyId: (id: string | null) => void;
   addMember: (member: RoomMember) => void;
   removeMember: (memberId: string) => void;
   setCursor: (cursor: CursorPosition) => void;
@@ -29,6 +33,7 @@ const initialState = {
   isConnected: false,
   isJoining: false,
   error: null,
+  myId: null as string | null,
   cursors: new Map<string, CursorPosition>(),
 };
 
@@ -39,6 +44,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
   setConnected: (isConnected) => set({ isConnected }),
   setJoining: (isJoining) => set({ isJoining }),
   setError: (error) => set({ error, isJoining: false }),
+  setMyId: (myId) => set({ myId }),
 
   addMember: (member) =>
     set((state) => {

@@ -1,26 +1,41 @@
 import type { NoteState } from "@shared/types";
+import { isValidNoteText, isValidUrl } from "@shared/validation";
 import { Router } from "express";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
-import { type AuthenticatedRequest, requireAuth } from "../middleware/requireAuth";
+import { type AuthenticatedRequest, getUser, requireAuth } from "../middleware/requireAuth";
 
 export const noteRouter = Router();
+
+const VALID_STATES: NoteState[] = ["in_jar", "pulled", "discarded"];
+
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function isNoteState(v: unknown): v is NoteState {
+  return typeof v === "string" && (VALID_STATES as string[]).includes(v);
+}
 
 // Create a note (requires auth)
 noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { jarId, text, url, style } = req.body;
-    if (!jarId || !text) {
-      res.status(400).json({ error: "jarId and text are required" });
+    if (!jarId || typeof text !== "string" || !isValidNoteText(text)) {
+      res.status(400).json({ error: "jarId and valid text (1-500 chars) are required" });
+      return;
+    }
+    if (url !== undefined && url !== null && url !== "" && !isValidUrl(url)) {
+      res.status(400).json({ error: "Invalid URL" });
       return;
     }
     const note = await noteQueries.createNote(pool, {
       jarId,
-      text,
-      url,
+      text: text.trim(),
+      url: url || undefined,
       style: style ?? "sticky",
-      authorId: req.user?.id,
+      authorId: getUser(req).id,
     });
     res.status(201).json(note);
   } catch (_err) {
@@ -31,12 +46,13 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
 // List notes by jar
 noteRouter.get("/", async (req, res) => {
   try {
-    const jarId = req.query.jarId as string;
-    const state = req.query.state as NoteState | undefined;
+    const jarId = asString(req.query.jarId);
     if (!jarId) {
       res.status(400).json({ error: "jarId query parameter is required" });
       return;
     }
+    const rawState = req.query.state;
+    const state = isNoteState(rawState) ? rawState : undefined;
     const notes = await noteQueries.listNotesByJar(pool, jarId, state);
     res.json(notes);
   } catch (_err) {
@@ -66,18 +82,30 @@ noteRouter.post("/pull", requireAuth, async (req: AuthenticatedRequest, res) => 
 // Update a note's text (requires auth + jar owner)
 noteRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const note = await noteQueries.getNoteById(pool, req.params.id);
+    const noteId = asString(req.params.id);
+    const note = await noteQueries.getNoteById(pool, noteId);
     if (!note) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
     const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== req.user?.id) {
+    if (jar?.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can edit notes" });
       return;
     }
     const { text, url } = req.body;
-    const updated = await noteQueries.updateNote(pool, req.params.id, { text, url });
+    if (text !== undefined && (typeof text !== "string" || !isValidNoteText(text))) {
+      res.status(400).json({ error: "text must be 1-500 characters" });
+      return;
+    }
+    if (url !== undefined && url !== null && url !== "" && !isValidUrl(url)) {
+      res.status(400).json({ error: "Invalid URL" });
+      return;
+    }
+    const updated = await noteQueries.updateNote(pool, noteId, {
+      text: typeof text === "string" ? text.trim() : undefined,
+      url: url === "" ? undefined : url,
+    });
     res.json(updated);
   } catch (_err) {
     res.status(500).json({ error: "Failed to update note" });
@@ -88,22 +116,22 @@ noteRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => 
 noteRouter.patch("/:id/state", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { state } = req.body;
-    const VALID_STATES = ["in_jar", "pulled", "discarded"];
-    if (!state || !VALID_STATES.includes(state)) {
+    if (!isNoteState(state)) {
       res.status(400).json({ error: "state must be one of: in_jar, pulled, discarded" });
       return;
     }
-    const note = await noteQueries.getNoteById(pool, req.params.id);
+    const noteId = asString(req.params.id);
+    const note = await noteQueries.getNoteById(pool, noteId);
     if (!note) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
     const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== req.user?.id) {
+    if (jar?.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can change note state" });
       return;
     }
-    const updated = await noteQueries.updateNoteState(pool, req.params.id, state);
+    const updated = await noteQueries.updateNoteState(pool, noteId, state);
     res.json(updated);
   } catch (_err) {
     res.status(500).json({ error: "Failed to update note state" });
@@ -113,17 +141,18 @@ noteRouter.patch("/:id/state", requireAuth, async (req: AuthenticatedRequest, re
 // Delete a note (requires auth + jar owner)
 noteRouter.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const note = await noteQueries.getNoteById(pool, req.params.id);
+    const noteId = asString(req.params.id);
+    const note = await noteQueries.getNoteById(pool, noteId);
     if (!note) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
     const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== req.user?.id) {
+    if (jar?.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can delete notes" });
       return;
     }
-    await noteQueries.deleteNote(pool, req.params.id);
+    await noteQueries.deleteNote(pool, noteId);
     res.status(204).send();
   } catch (_err) {
     res.status(500).json({ error: "Failed to delete note" });
@@ -147,11 +176,14 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (jar.ownerId !== req.user?.id) {
+    if (jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can import notes" });
       return;
     }
-    const count = await noteQueries.bulkCreateNotes(pool, jarId, texts);
+    const validTexts = texts.filter(
+      (t): t is string => typeof t === "string" && isValidNoteText(t),
+    );
+    const count = await noteQueries.bulkCreateNotes(pool, jarId, validTexts);
     res.status(201).json({ imported: count });
   } catch (_err) {
     res.status(500).json({ error: "Failed to import notes" });
@@ -161,8 +193,8 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
 // Export notes as JSON (public)
 noteRouter.get("/export", async (req, res) => {
   try {
-    const jarId = req.query.jarId as string;
-    const format = (req.query.format as string) ?? "json";
+    const jarId = asString(req.query.jarId);
+    const format = asString(req.query.format) || "json";
     if (!jarId) {
       res.status(400).json({ error: "jarId query parameter is required" });
       return;

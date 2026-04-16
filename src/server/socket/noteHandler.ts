@@ -89,15 +89,16 @@ export function registerNoteHandlers(
       const isPrivate = ctx.jarConfig?.pullVisibility === "private";
 
       if (isSealed) {
-        handleSealedPull(io, ctx, note, pulledBy);
+        const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
+        handleSealedPull(io, ctx, note, pulledBy, inJarCount);
       } else if (isPrivate) {
         socket.emit("note:pulled", note, pulledBy);
-        const pullCounts = await noteQueries.getPullCounts(pool, ctx.jarId);
-        socket.to(ctx.roomId).emit("note:state", {
-          inJarCount: await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
-          pulledNotes: [],
-          pullCounts,
-        });
+        const [inJarCount, pullCounts] = await Promise.all([
+          noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
+          noteQueries.getPullCounts(pool, ctx.jarId),
+        ]);
+        // Count-only update to peers — pulledNotes omitted so clients preserve their own state.
+        socket.to(ctx.roomId).emit("note:state", { inJarCount, pullCounts });
       } else {
         io.to(ctx.roomId).emit("note:pulled", note, pulledBy);
       }
@@ -141,9 +142,14 @@ export function registerNoteHandlers(
     safe(async () => {
       if (!ctx.jarId) return;
       const entries = await pullHistoryQueries.getHistory(pool, ctx.jarId);
+      const isPrivate = ctx.jarConfig?.pullVisibility === "private";
+      const filtered =
+        isPrivate && ctx.role !== "owner"
+          ? entries.filter((e) => e.pulledBy === ctx.displayName)
+          : entries;
       socket.emit(
         "history:list",
-        entries.map((e) => ({
+        filtered.map((e) => ({
           id: e.id,
           noteText: e.noteText,
           pulledBy: e.pulledBy,
@@ -167,7 +173,13 @@ export function registerNoteHandlers(
   );
 }
 
-function handleSealedPull(io: TypedServer, ctx: SocketContext, note: Note, pulledBy: string): void {
+function handleSealedPull(
+  io: TypedServer,
+  ctx: SocketContext,
+  note: Note,
+  pulledBy: string,
+  inJarCount: number,
+): void {
   if (!ctx.roomId) return;
   const revealAt = ctx.jarConfig?.sealedRevealCount ?? 1;
 
@@ -177,7 +189,7 @@ function handleSealedPull(io: TypedServer, ctx: SocketContext, note: Note, pulle
   const buffer = sealedNotes.get(ctx.roomId) ?? [];
   buffer.push(note);
 
-  io.to(ctx.roomId).emit("note:sealed", pulledBy, buffer.length, revealAt);
+  io.to(ctx.roomId).emit("note:sealed", pulledBy, buffer.length, revealAt, inJarCount);
 
   if (buffer.length >= revealAt) {
     io.to(ctx.roomId).emit("note:reveal", buffer);

@@ -109,7 +109,9 @@ export interface CursorPosition {
 
 export interface NoteStatePayload {
   inJarCount: number;
-  pulledNotes: Note[];
+  // Omitted when the update is count-only (e.g., private-mode pulls by others).
+  // Clients must preserve their existing pulledNotes when absent.
+  pulledNotes?: Note[];
   pullCounts?: Record<string, number>;
   jarConfig?: JarConfig;
   jarAppearance?: JarAppearance;
@@ -128,7 +130,12 @@ export interface ServerToClientEvents {
   "note:discarded": (noteId: string) => void;
   "note:returned": (noteId: string, inJarCount: number) => void;
   "pull:rejected": (reason: string) => void;
-  "note:sealed": (pulledBy: string, sealedCount: number, revealAt: number) => void;
+  "note:sealed": (
+    pulledBy: string,
+    sealedCount: number,
+    revealAt: number,
+    inJarCount: number,
+  ) => void;
   "note:reveal": (notes: Note[]) => void;
   "room:error": (error: string) => void;
   "history:list": (entries: PullHistoryEntry[]) => void;

@@ -77,12 +77,21 @@ function determineRole(ctx: SocketContext, jarOwnerId?: string): RoomMember["rol
   return "viewer";
 }
 
+function hasCapacity(members: Map<string, RoomMember>, role: RoomMember["role"], dbRoom: DbRoom) {
+  const existing = [...members.values()];
+  if (role === "viewer") {
+    return existing.filter((m) => m.role === "viewer").length < dbRoom.maxViewers;
+  }
+  return existing.filter((m) => m.role !== "viewer").length < dbRoom.maxParticipants;
+}
+
 async function sendNoteState(
   socket: TypedSocket,
   jarId: string,
   isPrivate: boolean,
   jarConfig: JarConfig | null,
   jarAppearance: JarAppearance | null,
+  displayName: string | null,
 ): Promise<void> {
   const shared = {
     jarConfig: jarConfig ?? undefined,
@@ -94,7 +103,8 @@ async function sendNoteState(
       noteQueries.listNotesByJar(pool, jarId, "pulled"),
       noteQueries.getPullCounts(pool, jarId),
     ]);
-    const myNotes = allPulled.filter((n) => n.pulledBy === socket.id);
+    // pulledBy is stored as the user's displayName (see pullRandomNote caller)
+    const myNotes = displayName ? allPulled.filter((n) => n.pulledBy === displayName) : [];
     socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts, ...shared });
   } else {
     const pulledNotes = await noteQueries.listNotesByJar(pool, jarId, "pulled");
@@ -156,15 +166,15 @@ export function registerRoomHandlers(
       }
       const members = roomMembers.get(roomId) ?? new Map();
 
-      if (members.size >= dbRoom.maxParticipants) {
-        socket.emit("room:error", "Room is full");
-        return;
-      }
-
       const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
       const jarConfig = jar?.config ?? null;
       const role = determineRole(ctx, jar?.ownerId);
       const effectiveName = ctx.displayName ?? displayName;
+
+      if (!hasCapacity(members, role, dbRoom)) {
+        socket.emit("room:error", "Room is full");
+        return;
+      }
 
       const member: RoomMember = {
         id: socket.id,
@@ -191,6 +201,7 @@ export function registerRoomHandlers(
         jarConfig?.pullVisibility === "private",
         jarConfig,
         jarAppearance,
+        effectiveName,
       );
       socket.to(roomId).emit("room:member_joined", member);
 

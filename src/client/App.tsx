@@ -9,7 +9,7 @@ import { useRoomStore } from "./stores/roomStore";
 
 function App() {
   const { data: session } = useSession();
-  const { room, isConnected, isJoining, error, cursors } = useRoomStore();
+  const { room, isConnected, isJoining, error, cursors, myId } = useRoomStore();
   const { inJarCount, pulledNotes, isAdding, jarConfig, jarAppearance, history } = useNoteStore();
   const { setError } = useRoomStore();
   const [isCreating, setIsCreating] = useState(false);
@@ -116,10 +116,8 @@ function App() {
     [joinRoom, setError, user?.displayName],
   );
 
-  // Determine if current user is a viewer
-  const myMember = room?.members.find((m) =>
-    user ? m.displayName === user.displayName : m.role === "viewer",
-  );
+  // Match by socket id (unique per tab) — display name can collide between users
+  const myMember = myId ? room?.members.find((m) => m.id === myId) : undefined;
   const isViewer = myMember?.role === "viewer" || !session?.user;
   const isOwner = myMember?.role === "owner";
 

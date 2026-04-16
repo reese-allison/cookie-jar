@@ -94,8 +94,8 @@ CREATE TABLE rooms (
   code TEXT NOT NULL UNIQUE,
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'locked', 'closed')),
-  max_participants INT NOT NULL DEFAULT 10,
-  max_viewers INT NOT NULL DEFAULT 20,
+  max_participants INT NOT NULL DEFAULT 20,
+  max_viewers INT NOT NULL DEFAULT 50,
   idle_timeout_minutes INT NOT NULL DEFAULT 30,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at TIMESTAMPTZ

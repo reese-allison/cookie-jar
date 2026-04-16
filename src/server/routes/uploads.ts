@@ -12,12 +12,13 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// SVG intentionally excluded: served from /uploads/ with its native MIME
+// a malicious SVG can execute inline <script> in the browsing context.
 const ALLOWED_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
-  "image/svg+xml",
   "audio/mpeg",
   "audio/wav",
   "audio/ogg",
@@ -36,7 +37,6 @@ const storage = multer.diskStorage({
       "image/jpeg": ".jpg",
       "image/webp": ".webp",
       "image/gif": ".gif",
-      "image/svg+xml": ".svg",
       "audio/mpeg": ".mp3",
       "audio/wav": ".wav",
       "audio/ogg": ".ogg",
