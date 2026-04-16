@@ -118,6 +118,8 @@ export interface ServerToClientEvents {
   "note:discarded": (noteId: string) => void;
   "note:returned": (noteId: string, inJarCount: number) => void;
   "pull:rejected": (reason: string) => void;
+  "note:sealed": (pulledBy: string, sealedCount: number, revealAt: number) => void;
+  "note:reveal": (notes: Note[]) => void;
   "room:error": (error: string) => void;
   "history:list": (entries: PullHistoryEntry[]) => void;
 }

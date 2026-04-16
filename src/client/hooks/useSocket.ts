@@ -30,6 +30,8 @@ export function useSocket() {
     notePulled,
     noteDiscarded,
     noteReturned,
+    noteSealed,
+    notesRevealed,
     setHistory,
     setAdding,
     setPulling,
@@ -95,6 +97,13 @@ export function useSocket() {
       soundManager.play("noteReturn");
     });
     socket.on("pull:rejected", () => setPulling(false));
+    socket.on("note:sealed", (_pulledBy, sealedCount, revealAt) =>
+      noteSealed(sealedCount, revealAt),
+    );
+    socket.on("note:reveal", (notes) => {
+      notesRevealed(notes);
+      soundManager.play("notePull");
+    });
     socket.on("history:list", (entries) => setHistory(entries));
 
     return () => {
@@ -114,6 +123,8 @@ export function useSocket() {
     notePulled,
     noteDiscarded,
     noteReturned,
+    noteSealed,
+    notesRevealed,
     setPulling,
     setHistory,
   ]);

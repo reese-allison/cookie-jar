@@ -8,6 +8,8 @@ interface NoteStore {
   jarConfig: JarConfig | null;
   jarAppearance: JarAppearance | null;
   history: PullHistoryEntry[];
+  sealedCount: number;
+  sealedRevealAt: number;
   isAdding: boolean;
   isPulling: boolean;
 
@@ -23,6 +25,8 @@ interface NoteStore {
   notePulled: (note: Note) => void;
   noteDiscarded: (noteId: string) => void;
   noteReturned: (noteId: string, inJarCount: number) => void;
+  noteSealed: (sealedCount: number, revealAt: number) => void;
+  notesRevealed: (notes: Note[]) => void;
   setHistory: (entries: PullHistoryEntry[]) => void;
   setAdding: (adding: boolean) => void;
   setPulling: (pulling: boolean) => void;
@@ -36,6 +40,8 @@ const initialState = {
   jarConfig: null as JarConfig | null,
   jarAppearance: null as JarAppearance | null,
   history: [] as PullHistoryEntry[],
+  sealedCount: 0,
+  sealedRevealAt: 0,
   isAdding: false,
   isPulling: false,
 };
@@ -70,6 +76,16 @@ export const useNoteStore = create<NoteStore>((set) => ({
     set((state) => ({
       pulledNotes: state.pulledNotes.filter((n) => n.id !== noteId),
       inJarCount,
+    })),
+
+  noteSealed: (sealedCount, sealedRevealAt) =>
+    set({ sealedCount, sealedRevealAt, isPulling: false }),
+
+  notesRevealed: (notes) =>
+    set((state) => ({
+      pulledNotes: [...state.pulledNotes, ...notes],
+      sealedCount: 0,
+      sealedRevealAt: 0,
     })),
 
   setHistory: (history) => set({ history }),

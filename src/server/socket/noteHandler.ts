@@ -1,4 +1,4 @@
-import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
+import type { ClientToServerEvents, Note, ServerToClientEvents } from "@shared/types";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
@@ -7,6 +7,9 @@ import type { SocketContext } from "./context";
 import type { TypedServer } from "./server";
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+// In-memory sealed notes buffer per room (cleared on reveal)
+const sealedNotes = new Map<string, Note[]>();
 
 function requireContributor(ctx: SocketContext, socket: TypedSocket): boolean {
   if (!ctx.isAuthenticated || ctx.role === "viewer") {
@@ -48,7 +51,6 @@ export function registerNoteHandlers(
       return;
     }
 
-    // Record in pull history
     await pullHistoryQueries.recordPull(pool, {
       jarId: ctx.jarId,
       noteId: note.id,
@@ -56,11 +58,13 @@ export function registerNoteHandlers(
       roomId: ctx.roomId ?? undefined,
     });
 
+    const isSealed = ctx.jarConfig?.noteVisibility === "sealed";
     const isPrivate = ctx.jarConfig?.pullVisibility === "private";
 
-    if (isPrivate) {
+    if (isSealed) {
+      handleSealedPull(io, ctx, note, pulledBy);
+    } else if (isPrivate) {
       socket.emit("note:pulled", note, pulledBy);
-
       const pullCounts = await noteQueries.getPullCounts(pool, ctx.jarId);
       socket.to(ctx.roomId).emit("note:state", {
         inJarCount: await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
@@ -116,4 +120,24 @@ export function registerNoteHandlers(
     await pullHistoryQueries.clearHistory(pool, ctx.jarId);
     socket.emit("history:list", []);
   });
+}
+
+function handleSealedPull(io: TypedServer, ctx: SocketContext, note: Note, pulledBy: string): void {
+  if (!ctx.roomId) return;
+  const revealAt = ctx.jarConfig?.sealedRevealCount ?? 1;
+
+  if (!sealedNotes.has(ctx.roomId)) {
+    sealedNotes.set(ctx.roomId, []);
+  }
+  const buffer = sealedNotes.get(ctx.roomId) ?? [];
+  buffer.push(note);
+
+  // Broadcast that a sealed pull happened (no content revealed)
+  io.to(ctx.roomId).emit("note:sealed", pulledBy, buffer.length, revealAt);
+
+  // Check if it's time to reveal
+  if (buffer.length >= revealAt) {
+    io.to(ctx.roomId).emit("note:reveal", buffer);
+    sealedNotes.delete(ctx.roomId);
+  }
 }
