@@ -12,6 +12,7 @@ export interface Note {
   style: NoteStyle;
   state: NoteState;
   authorId?: string;
+  pulledBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -19,6 +20,7 @@ export interface Note {
 // ---- Jar ----
 
 export type NoteVisibility = "open" | "sealed";
+export type PullVisibility = "shared" | "private";
 
 /**
  * A jar's visual identity is two user-uploaded images (opened and closed states)
@@ -34,8 +36,10 @@ export interface JarAppearance {
 
 export interface JarConfig {
   noteVisibility: NoteVisibility;
+  pullVisibility: PullVisibility;
   sealedRevealCount: number;
   showAuthors: boolean;
+  showPulledBy: boolean;
 }
 
 export interface Jar {
@@ -93,6 +97,7 @@ export interface CursorPosition {
 export interface NoteStatePayload {
   inJarCount: number;
   pulledNotes: Note[];
+  pullCounts?: Record<string, number>;
 }
 
 export interface ServerToClientEvents {

@@ -31,6 +31,7 @@ CREATE TABLE notes (
   style TEXT NOT NULL DEFAULT 'sticky',
   state TEXT NOT NULL DEFAULT 'in_jar' CHECK (state IN ('in_jar', 'pulled', 'discarded')),
   author_id UUID REFERENCES users(id),
+  pulled_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

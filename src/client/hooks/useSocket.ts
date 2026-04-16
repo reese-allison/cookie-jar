@@ -60,7 +60,9 @@ export function useSocket() {
     socket.on("cursor:moved", (cursor) => setCursor(cursor));
 
     // Note events
-    socket.on("note:state", (state) => setNoteState(state.inJarCount, state.pulledNotes));
+    socket.on("note:state", (state) =>
+      setNoteState(state.inJarCount, state.pulledNotes, state.pullCounts),
+    );
     socket.on("note:added", (note, inJarCount) => noteAdded(note, inJarCount));
     socket.on("note:pulled", (note) => {
       notePulled(note);

@@ -1,6 +1,7 @@
 import type { ClientToServerEvents, Room, RoomMember, ServerToClientEvents } from "@shared/types";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
+import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
 import type { SocketContext } from "./context";
@@ -96,21 +97,39 @@ export function registerRoomHandlers(
     };
 
     members.set(socket.id, member);
+
+    // Load jar config for visibility settings
+    const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
+    const jarConfig = jar?.config ?? null;
+
     ctx.roomId = roomId;
     ctx.jarId = dbRoom.jarId;
+    ctx.jarConfig = jarConfig;
     ctx.memberId = socket.id;
+    ctx.displayName = displayName;
 
     await socket.join(roomId);
 
     // Send room state
     socket.emit("room:state", buildRoomState(dbRoom, roomId));
 
-    // Send current note state (in-jar count + pulled notes)
-    const [inJarCount, pulledNotes] = await Promise.all([
-      noteQueries.countNotesByState(pool, dbRoom.jarId, "in_jar"),
-      noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled"),
-    ]);
-    socket.emit("note:state", { inJarCount, pulledNotes });
+    // Send current note state based on pull visibility
+    const inJarCount = await noteQueries.countNotesByState(pool, dbRoom.jarId, "in_jar");
+    const isPrivate = jarConfig?.pullVisibility === "private";
+
+    if (isPrivate) {
+      // Private mode: only show this user's pulled notes + counts for everyone
+      const [allPulled, pullCounts] = await Promise.all([
+        noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled"),
+        noteQueries.getPullCounts(pool, dbRoom.jarId),
+      ]);
+      const myNotes = allPulled.filter((n) => n.pulledBy === socket.id);
+      socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts });
+    } else {
+      // Shared mode: show all pulled notes
+      const pulledNotes = await noteQueries.listNotesByJar(pool, dbRoom.jarId, "pulled");
+      socket.emit("note:state", { inJarCount, pulledNotes });
+    }
 
     // Broadcast join to others
     socket.to(roomId).emit("room:member_joined", member);

@@ -22,7 +22,8 @@ function rowToNote(row: Record<string, unknown>): Note {
     url: (row.url as string) ?? undefined,
     style: row.style as NoteStyle,
     state: row.state as NoteState,
-    authorId: row.author_id as string,
+    authorId: (row.author_id as string) ?? undefined,
+    pulledBy: (row.pulled_by as string) ?? undefined,
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -98,10 +99,14 @@ export async function updateNote(
   return rows.length > 0 ? rowToNote(rows[0]) : null;
 }
 
-export async function pullRandomNote(pool: pg.Pool, jarId: string): Promise<Note | null> {
+export async function pullRandomNote(
+  pool: pg.Pool,
+  jarId: string,
+  pulledBy?: string,
+): Promise<Note | null> {
   const { rows } = await pool.query(
     `UPDATE notes
-     SET state = 'pulled', updated_at = now()
+     SET state = 'pulled', pulled_by = $2, updated_at = now()
      WHERE id = (
        SELECT id FROM notes
        WHERE jar_id = $1 AND state = 'in_jar'
@@ -110,9 +115,21 @@ export async function pullRandomNote(pool: pg.Pool, jarId: string): Promise<Note
        FOR UPDATE SKIP LOCKED
      )
      RETURNING *`,
-    [jarId],
+    [jarId, pulledBy ?? null],
   );
   return rows.length > 0 ? rowToNote(rows[0]) : null;
+}
+
+export async function getPullCounts(pool: pg.Pool, jarId: string): Promise<Record<string, number>> {
+  const { rows } = await pool.query(
+    "SELECT pulled_by, count(*)::int AS count FROM notes WHERE jar_id = $1 AND state = 'pulled' AND pulled_by IS NOT NULL GROUP BY pulled_by",
+    [jarId],
+  );
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    counts[row.pulled_by as string] = row.count as number;
+  }
+  return counts;
 }
 
 export async function countNotesByState(

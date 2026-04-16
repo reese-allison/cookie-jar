@@ -24,6 +24,8 @@ export const NOTE_STYLES = [
 // Default jar config
 export const DEFAULT_JAR_CONFIG = {
   noteVisibility: "open",
+  pullVisibility: "shared",
   sealedRevealCount: 1,
   showAuthors: false,
+  showPulledBy: false,
 } as const;

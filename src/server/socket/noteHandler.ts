@@ -29,13 +29,30 @@ export function registerNoteHandlers(
   socket.on("note:pull", async () => {
     if (!ctx.roomId || !ctx.jarId) return;
 
-    const note = await noteQueries.pullRandomNote(pool, ctx.jarId);
+    const pulledBy = ctx.displayName ?? ctx.memberId ?? socket.id;
+    const note = await noteQueries.pullRandomNote(pool, ctx.jarId, pulledBy);
     if (!note) {
       socket.emit("pull:rejected", "The jar is empty");
       return;
     }
 
-    io.to(ctx.roomId).emit("note:pulled", note, ctx.memberId ?? socket.id);
+    const isPrivate = ctx.jarConfig?.pullVisibility === "private";
+
+    if (isPrivate) {
+      // Private mode: only the puller sees the note content, others get updated counts
+      socket.emit("note:pulled", note, pulledBy);
+
+      // Broadcast updated pull counts to everyone else
+      const pullCounts = await noteQueries.getPullCounts(pool, ctx.jarId);
+      socket.to(ctx.roomId).emit("note:state", {
+        inJarCount: await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
+        pulledNotes: [],
+        pullCounts,
+      });
+    } else {
+      // Shared mode: everyone sees the pulled note
+      io.to(ctx.roomId).emit("note:pulled", note, pulledBy);
+    }
   });
 
   socket.on("note:discard", async (noteId) => {

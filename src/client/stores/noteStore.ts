@@ -4,11 +4,16 @@ import { create } from "zustand";
 interface NoteStore {
   inJarCount: number;
   pulledNotes: Note[];
+  pullCounts: Record<string, number>;
   isAdding: boolean;
   isPulling: boolean;
 
   // Actions
-  setNoteState: (inJarCount: number, pulledNotes: Note[]) => void;
+  setNoteState: (
+    inJarCount: number,
+    pulledNotes: Note[],
+    pullCounts?: Record<string, number>,
+  ) => void;
   noteAdded: (note: Note, inJarCount: number) => void;
   notePulled: (note: Note) => void;
   noteDiscarded: (noteId: string) => void;
@@ -21,6 +26,7 @@ interface NoteStore {
 const initialState = {
   inJarCount: 0,
   pulledNotes: [] as Note[],
+  pullCounts: {} as Record<string, number>,
   isAdding: false,
   isPulling: false,
 };
@@ -28,7 +34,12 @@ const initialState = {
 export const useNoteStore = create<NoteStore>((set) => ({
   ...initialState,
 
-  setNoteState: (inJarCount, pulledNotes) => set({ inJarCount, pulledNotes }),
+  setNoteState: (inJarCount, pulledNotes, pullCounts) =>
+    set({
+      inJarCount,
+      pulledNotes,
+      ...(pullCounts !== undefined ? { pullCounts } : {}),
+    }),
 
   noteAdded: (_note, inJarCount) => set({ inJarCount, isAdding: false }),
 
