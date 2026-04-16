@@ -1,15 +1,25 @@
 import { useState } from "react";
 import { AuthButtons } from "./AuthButtons";
+import { CreateJar } from "./CreateJar";
 import { UserMenu } from "./UserMenu";
 
 interface RoomCodeEntryProps {
   onJoin: (code: string, displayName: string) => void;
+  onCreateJar?: (name: string) => void;
   isJoining: boolean;
+  isCreating: boolean;
   error: string | null;
   user: { displayName: string; image?: string } | null;
 }
 
-export function RoomCodeEntry({ onJoin, isJoining, error, user }: RoomCodeEntryProps) {
+export function RoomCodeEntry({
+  onJoin,
+  onCreateJar,
+  isJoining,
+  isCreating,
+  error,
+  user,
+}: RoomCodeEntryProps) {
   const [code, setCode] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -34,6 +44,12 @@ export function RoomCodeEntry({ onJoin, isJoining, error, user }: RoomCodeEntryP
           <p className="room-code-entry__guest-note">Or join as a guest (view only)</p>
         </div>
       )}
+
+      {onCreateJar && <CreateJar onCreate={onCreateJar} isCreating={isCreating} />}
+
+      <div className="room-code-entry__divider">
+        <span>or join an existing room</span>
+      </div>
 
       <form onSubmit={handleSubmit}>
         <input

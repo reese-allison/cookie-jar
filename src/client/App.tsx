@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { RoomView } from "./components/RoomView";
@@ -10,6 +11,8 @@ function App() {
   const { data: session } = useSession();
   const { room, isConnected, isJoining, error, cursors } = useRoomStore();
   const { inJarCount, pulledNotes, isAdding, jarConfig, history } = useNoteStore();
+  const { setError } = useRoomStore();
+  const [isCreating, setIsCreating] = useState(false);
   const {
     joinRoom,
     leaveRoom,
@@ -28,14 +31,68 @@ function App() {
     ? { displayName: session.user.name, image: session.user.image ?? undefined }
     : null;
 
-  // Determine if current user is a viewer (find our member in the room)
+  const createJarAndJoin = useCallback(
+    async (name: string) => {
+      setIsCreating(true);
+      try {
+        // Create the jar
+        const jarRes = await fetch("/api/jars", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ name }),
+        });
+        if (!jarRes.ok) {
+          const data = await jarRes.json();
+          setError(data.error ?? "Failed to create jar");
+          setIsCreating(false);
+          return;
+        }
+        const jar = await jarRes.json();
+
+        // Create a room for the jar
+        const roomRes = await fetch("/api/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ jarId: jar.id }),
+        });
+        if (!roomRes.ok) {
+          const data = await roomRes.json();
+          setError(data.error ?? "Failed to create room");
+          setIsCreating(false);
+          return;
+        }
+        const newRoom = await roomRes.json();
+
+        setIsCreating(false);
+        // Auto-join the room
+        joinRoom(newRoom.code, user?.displayName ?? "Host");
+      } catch {
+        setError("Something went wrong");
+        setIsCreating(false);
+      }
+    },
+    [joinRoom, setError, user?.displayName],
+  );
+
+  // Determine if current user is a viewer
   const myMember = room?.members.find((m) =>
     user ? m.displayName === user.displayName : m.role === "viewer",
   );
   const isViewer = myMember?.role === "viewer" || !session?.user;
 
   if (!room) {
-    return <RoomCodeEntry onJoin={joinRoom} isJoining={isJoining} error={error} user={user} />;
+    return (
+      <RoomCodeEntry
+        onJoin={joinRoom}
+        onCreateJar={user ? createJarAndJoin : undefined}
+        isJoining={isJoining}
+        isCreating={isCreating}
+        error={error}
+        user={user}
+      />
+    );
   }
 
   return (
