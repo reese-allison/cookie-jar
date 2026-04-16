@@ -2,13 +2,16 @@ interface JarProps {
   noteCount: number;
   isLocked: boolean;
   onPull: () => void;
+  isHighlighted?: boolean;
 }
 
-export function Jar({ noteCount, isLocked, onPull }: JarProps) {
+export function Jar({ noteCount, isLocked, onPull, isHighlighted = false }: JarProps) {
   const isEmpty = noteCount === 0;
 
   return (
-    <div className={`jar ${isLocked ? "jar--locked" : ""}`}>
+    <div
+      className={`jar ${isLocked ? "jar--locked" : ""} ${isHighlighted ? "jar--highlighted" : ""}`}
+    >
       <button
         type="button"
         className="jar__body"

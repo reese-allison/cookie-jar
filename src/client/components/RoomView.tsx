@@ -1,7 +1,11 @@
 import type { CursorPosition, Note, NoteStyle, Room } from "@shared/types";
+import { useCallback, useRef, useState } from "react";
+import type { Rect } from "../hooks/hitTest";
+import type { DropTarget } from "../hooks/useDragNote";
+import { DiscardBin } from "./DiscardBin";
+import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
 import { NoteForm } from "./NoteForm";
-import { PulledNote } from "./PulledNote";
 
 interface RoomViewProps {
   room: Room;
@@ -34,6 +38,24 @@ export function RoomView({
   onDiscard,
   onReturn,
 }: RoomViewProps) {
+  const jarRef = useRef<HTMLDivElement>(null);
+  const discardRef = useRef<HTMLDivElement>(null);
+  const jarRect = useRef<Rect | null>(null);
+  const discardRect = useRef<Rect | null>(null);
+  const [hoverTarget, setHoverTarget] = useState<DropTarget>(null);
+
+  // Update rects on drag start — we capture once per drag rather than on every frame
+  const updateRects = useCallback(() => {
+    if (jarRef.current) {
+      const r = jarRef.current.getBoundingClientRect();
+      jarRect.current = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+    if (discardRef.current) {
+      const r = discardRef.current.getBoundingClientRect();
+      discardRect.current = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+  }, []);
+
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
     onMouseMove(e.clientX - rect.left, e.clientY - rect.top);
@@ -74,15 +96,35 @@ export function RoomView({
       </div>
 
       <div className="room-scene" role="application" onMouseMove={handleMouseMove}>
-        <Jar noteCount={inJarCount} isLocked={isLocked} onPull={onPull} />
+        <div ref={jarRef}>
+          <Jar
+            noteCount={inJarCount}
+            isLocked={isLocked}
+            onPull={onPull}
+            isHighlighted={hoverTarget === "jar"}
+          />
+        </div>
 
         <div className="pulled-notes">
           {pulledNotes.map((note) => (
-            <PulledNote key={note.id} note={note} onDiscard={onDiscard} onReturn={onReturn} />
+            <DraggablePulledNote
+              key={note.id}
+              note={note}
+              onDiscard={onDiscard}
+              onReturn={onReturn}
+              onHover={(target) => {
+                updateRects();
+                setHoverTarget(target);
+              }}
+              jarRect={jarRect}
+              discardRect={discardRect}
+            />
           ))}
         </div>
 
         {!isLocked && <NoteForm onSubmit={onAddNote} disabled={isAdding} />}
+
+        <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />
 
         {/* Remote cursors */}
         {[...cursors.entries()].map(([userId, cursor]) => (
