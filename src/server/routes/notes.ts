@@ -1,3 +1,4 @@
+import { MAX_BULK_IMPORT, MAX_NOTES_PER_JAR } from "@shared/constants";
 import type { NoteState } from "@shared/types";
 import { isValidNoteText, isValidUrl } from "@shared/validation";
 import { Router } from "express";
@@ -167,8 +168,8 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
       res.status(400).json({ error: "jarId and texts array are required" });
       return;
     }
-    if (texts.length > 500) {
-      res.status(400).json({ error: "Maximum 500 notes per import" });
+    if (texts.length > MAX_BULK_IMPORT) {
+      res.status(400).json({ error: `Maximum ${MAX_BULK_IMPORT} notes per import` });
       return;
     }
     const jar = await jarQueries.getJarById(pool, jarId);
@@ -183,8 +184,19 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
     const validTexts = texts.filter(
       (t): t is string => typeof t === "string" && isValidNoteText(t),
     );
-    const count = await noteQueries.bulkCreateNotes(pool, jarId, validTexts);
-    res.status(201).json({ imported: count });
+    // Cap against total jar size so a loop of bulk-imports can't blow past the
+    // per-jar cap and DoS the pod.
+    const existing = await noteQueries.countNotesByState(pool, jarId, "in_jar");
+    const roomLeft = MAX_NOTES_PER_JAR - existing;
+    if (roomLeft <= 0) {
+      res.status(400).json({
+        error: `Jar is full (${MAX_NOTES_PER_JAR} notes max). Discard some first.`,
+      });
+      return;
+    }
+    const toImport = validTexts.slice(0, roomLeft);
+    const count = await noteQueries.bulkCreateNotes(pool, jarId, toImport);
+    res.status(201).json({ imported: count, skipped: validTexts.length - count });
   } catch (_err) {
     res.status(500).json({ error: "Failed to import notes" });
   }

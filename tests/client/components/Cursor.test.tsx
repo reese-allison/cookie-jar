@@ -8,6 +8,12 @@ import { Cursor } from "../../../src/client/components/Cursor";
 afterEach(cleanup);
 
 describe("Cursor component", () => {
+  it("is wrapped in React.memo so peer cursor updates don't re-render every cursor", () => {
+    // React.memo components expose a specific $$typeof symbol. Checking it
+    // ensures we don't accidentally drop the memoization wrapper.
+    expect((Cursor as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for("react.memo"));
+  });
+
   it("renders with the user's display name", () => {
     render(<Cursor x={100} y={200} displayName="Alice" color="#FF6B6B" />);
     expect(screen.getByText("Alice")).toBeDefined();

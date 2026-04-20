@@ -8,6 +8,7 @@ CREATE TABLE users (
   display_name TEXT NOT NULL,
   email_verified BOOLEAN NOT NULL DEFAULT false,
   image TEXT,
+  is_anonymous BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -87,6 +88,7 @@ CREATE TABLE notes (
 
 CREATE INDEX idx_notes_jar_id ON notes(jar_id);
 CREATE INDEX idx_notes_jar_state ON notes(jar_id, state);
+CREATE INDEX idx_notes_author_id ON notes(author_id);
 
 -- Rooms (live sessions around a jar)
 CREATE TABLE rooms (
@@ -115,3 +117,5 @@ CREATE TABLE pull_history (
 );
 
 CREATE INDEX idx_pull_history_jar_id ON pull_history(jar_id);
+CREATE INDEX idx_pull_history_note_id ON pull_history(note_id);
+CREATE INDEX idx_pull_history_room_id ON pull_history(room_id);

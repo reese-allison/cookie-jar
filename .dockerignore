@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+dist
+.env
+.env.*
+!.env.example
+plans
+tests
+playwright-report
+test-results
+coverage
+*.log
+README.md
+.vscode
+.claude

@@ -1,22 +1,19 @@
-import { NOTE_STYLES } from "@shared/constants";
+import { MAX_NOTES_PER_JAR, NOTE_STYLES } from "@shared/constants";
 import type { ClientToServerEvents, Note, ServerToClientEvents } from "@shared/types";
 import { isValidNoteText, isValidUrl } from "@shared/validation";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
 import * as pullHistoryQueries from "../db/queries/pullHistory";
+import * as roomQueries from "../db/queries/rooms";
+import { withTransaction } from "../db/transaction";
 import type { SocketContext } from "./context";
+import type { SocketDeps } from "./deps";
 import { withErrorHandler } from "./errorHandler";
+import { socketRateLimiter } from "./rateLimit";
 import type { TypedServer } from "./server";
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-
-// In-memory sealed notes buffer per room (cleared on reveal)
-const sealedNotes = new Map<string, Note[]>();
-
-export function clearSealedNotes(roomId: string): void {
-  sealedNotes.delete(roomId);
-}
 
 function requireContributor(ctx: SocketContext, socket: TypedSocket): boolean {
   if (!ctx.isAuthenticated || ctx.role === "viewer") {
@@ -26,37 +23,81 @@ function requireContributor(ctx: SocketContext, socket: TypedSocket): boolean {
   return true;
 }
 
+/** Validate + normalize incoming note input. Emits room:error and returns null on failure. */
+function validateNoteInput(
+  socket: TypedSocket,
+  input: { text: string; url?: string; style?: string },
+): { text: string; url?: string; style: Note["style"] } | null {
+  if (!isValidNoteText(input.text)) {
+    socket.emit("room:error", "Note text must be 1-500 characters");
+    return null;
+  }
+  if (input.url && !isValidUrl(input.url)) {
+    socket.emit("room:error", "Invalid URL");
+    return null;
+  }
+  const style = NOTE_STYLES.includes(input.style as (typeof NOTE_STYLES)[number])
+    ? (input.style as Note["style"])
+    : "sticky";
+  return { text: input.text, url: input.url, style };
+}
+
+/**
+ * Checks whether the room is currently locked. Locked rooms permit pulls and
+ * returns but reject new notes and discards — the jar becomes read-mostly.
+ * Queries the DB since room state can change from another socket's lock action
+ * at any time and isn't cached in our per-socket ctx.
+ */
+async function isRoomLocked(ctx: SocketContext): Promise<boolean> {
+  if (!ctx.roomId) return false;
+  const room = await roomQueries.getRoomById(pool, ctx.roomId);
+  return room?.state === "locked";
+}
+
 export function registerNoteHandlers(
   io: TypedServer,
   socket: TypedSocket,
   ctx: SocketContext,
+  deps: SocketDeps,
 ): void {
   // biome-ignore lint/suspicious/noExplicitAny: socket handlers have varied signatures
   const safe = (handler: (...args: any[]) => unknown) => withErrorHandler(socket, handler);
 
+  function guardRate(event: string): boolean {
+    if (!socketRateLimiter.allow(socket.id, event)) {
+      // retryInMs is a hint for the client UI; 1 s is conservative for all
+      // configured buckets (slowest is jar:refresh at 3 s, fastest note:* at
+      // 500 ms). Clients can choose to honor or ignore it.
+      socket.emit("rate_limited", event, 1000);
+      return false;
+    }
+    return true;
+  }
+
   socket.on(
     "note:add",
     safe(async (noteInput: { text: string; url?: string; style?: string }) => {
+      if (!guardRate("note:add")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
-      if (!isValidNoteText(noteInput.text)) {
-        socket.emit("room:error", "Note text must be 1-500 characters");
+      if (await isRoomLocked(ctx)) {
+        socket.emit("room:error", "The jar is locked — no new notes can be added");
         return;
       }
+      const validated = validateNoteInput(socket, noteInput);
+      if (!validated) return;
 
-      if (noteInput.url && !isValidUrl(noteInput.url)) {
-        socket.emit("room:error", "Invalid URL");
+      const existing = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
+      if (existing >= MAX_NOTES_PER_JAR) {
+        socket.emit("room:error", `Jar is full (${MAX_NOTES_PER_JAR} notes max)`);
         return;
       }
-      const style = NOTE_STYLES.includes(noteInput.style as (typeof NOTE_STYLES)[number])
-        ? (noteInput.style as Note["style"])
-        : "sticky";
 
       const note = await noteQueries.createNote(pool, {
         jarId: ctx.jarId,
-        text: noteInput.text,
-        url: noteInput.url,
-        style,
+        text: validated.text,
+        url: validated.url,
+        style: validated.style,
         authorId: ctx.userId ?? undefined,
       });
 
@@ -68,39 +109,47 @@ export function registerNoteHandlers(
   socket.on(
     "note:pull",
     safe(async () => {
-      if (!ctx.roomId || !ctx.jarId) return;
+      if (!guardRate("note:pull")) return;
+      const { roomId, jarId } = ctx;
+      if (!roomId || !jarId) return;
       if (!requireContributor(ctx, socket)) return;
 
       const pulledBy = ctx.displayName ?? ctx.memberId ?? socket.id;
-      const note = await noteQueries.pullRandomNote(pool, ctx.jarId, pulledBy);
+      // Pull + history must commit together: a note marked "pulled" without a
+      // history row would show up as pulled to peers but never appear in the
+      // history feed, and we couldn't audit who got it.
+      const note = await withTransaction(pool, async (client) => {
+        const pulled = await noteQueries.pullRandomNote(client, jarId, pulledBy);
+        if (!pulled) return null;
+        await pullHistoryQueries.recordPull(client, {
+          jarId,
+          noteId: pulled.id,
+          pulledBy,
+          roomId,
+        });
+        return pulled;
+      });
       if (!note) {
         socket.emit("pull:rejected", "The jar is empty");
         return;
       }
 
-      await pullHistoryQueries.recordPull(pool, {
-        jarId: ctx.jarId,
-        noteId: note.id,
-        pulledBy,
-        roomId: ctx.roomId ?? undefined,
-      });
-
       const isSealed = ctx.jarConfig?.noteVisibility === "sealed";
       const isPrivate = ctx.jarConfig?.pullVisibility === "private";
 
       if (isSealed) {
-        const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
-        handleSealedPull(io, ctx, note, pulledBy, inJarCount);
+        const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
+        await handleSealedPull(io, ctx, note, pulledBy, inJarCount, deps);
       } else if (isPrivate) {
         socket.emit("note:pulled", note, pulledBy);
         const [inJarCount, pullCounts] = await Promise.all([
-          noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
-          noteQueries.getPullCounts(pool, ctx.jarId),
+          noteQueries.countNotesByState(pool, jarId, "in_jar"),
+          noteQueries.getPullCounts(pool, jarId),
         ]);
         // Count-only update to peers — pulledNotes omitted so clients preserve their own state.
-        socket.to(ctx.roomId).emit("note:state", { inJarCount, pullCounts });
+        socket.to(roomId).emit("note:state", { inJarCount, pullCounts });
       } else {
-        io.to(ctx.roomId).emit("note:pulled", note, pulledBy);
+        io.to(roomId).emit("note:pulled", note, pulledBy);
       }
     }),
   );
@@ -108,8 +157,13 @@ export function registerNoteHandlers(
   socket.on(
     "note:discard",
     safe(async (noteId: string) => {
+      if (!guardRate("note:discard")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
+      if (await isRoomLocked(ctx)) {
+        socket.emit("room:error", "The jar is locked — notes can't be discarded");
+        return;
+      }
 
       const updated = await noteQueries.updateNoteStateIfInJar(
         pool,
@@ -126,6 +180,7 @@ export function registerNoteHandlers(
   socket.on(
     "note:return",
     safe(async (noteId: string) => {
+      if (!guardRate("note:return")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
 
@@ -137,9 +192,23 @@ export function registerNoteHandlers(
     }),
   );
 
+  // Ephemeral drag position broadcasts. No DB state — just relayed to peers so
+  // the group sees the note moving in real time. Volatile for move updates
+  // (drop intermediate packets if client is slow) so buffering can't build up.
+  socket.on("note:drag", (noteId: string, mx: number, my: number) => {
+    if (!ctx.roomId) return;
+    socket.volatile.to(ctx.roomId).emit("note:drag", noteId, socket.id, mx, my);
+  });
+
+  socket.on("note:drag_end", (noteId: string) => {
+    if (!ctx.roomId) return;
+    socket.to(ctx.roomId).emit("note:drag_end", noteId, socket.id);
+  });
+
   socket.on(
     "history:get",
     safe(async () => {
+      if (!guardRate("history:get")) return;
       if (!ctx.jarId) return;
       const entries = await pullHistoryQueries.getHistory(pool, ctx.jarId);
       const isPrivate = ctx.jarConfig?.pullVisibility === "private";
@@ -173,26 +242,23 @@ export function registerNoteHandlers(
   );
 }
 
-function handleSealedPull(
+async function handleSealedPull(
   io: TypedServer,
   ctx: SocketContext,
   note: Note,
   pulledBy: string,
   inJarCount: number,
-): void {
+  deps: SocketDeps,
+): Promise<void> {
   if (!ctx.roomId) return;
   const revealAt = ctx.jarConfig?.sealedRevealCount ?? 1;
-
-  if (!sealedNotes.has(ctx.roomId)) {
-    sealedNotes.set(ctx.roomId, []);
-  }
-  const buffer = sealedNotes.get(ctx.roomId) ?? [];
-  buffer.push(note);
-
-  io.to(ctx.roomId).emit("note:sealed", pulledBy, buffer.length, revealAt, inJarCount);
-
-  if (buffer.length >= revealAt) {
-    io.to(ctx.roomId).emit("note:reveal", buffer);
-    sealedNotes.delete(ctx.roomId);
+  const len = await deps.sealedNotesStore.push(ctx.roomId, note);
+  io.to(ctx.roomId).emit("note:sealed", pulledBy, len, revealAt, inJarCount);
+  if (len >= revealAt) {
+    // Atomic in Redis — only one pod wins the drain + emit.
+    const revealed = await deps.sealedNotesStore.revealIfReady(ctx.roomId, revealAt);
+    if (revealed.length > 0) {
+      io.to(ctx.roomId).emit("note:reveal", revealed);
+    }
   }
 }

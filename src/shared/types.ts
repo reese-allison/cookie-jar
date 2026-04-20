@@ -137,8 +137,14 @@ export interface ServerToClientEvents {
     inJarCount: number,
   ) => void;
   "note:reveal": (notes: Note[]) => void;
+  "note:drag": (noteId: string, draggerId: string, mx: number, my: number) => void;
+  "note:drag_end": (noteId: string, draggerId: string) => void;
   "room:error": (error: string) => void;
   "history:list": (entries: PullHistoryEntry[]) => void;
+  /** Fired when the server rejects an event for exceeding its per-socket rate budget. */
+  rate_limited: (event: string, retryInMs: number) => void;
+  /** Fired when a long-lived socket's underlying session has expired. The socket will disconnect immediately afterwards. */
+  "auth:expired": () => void;
 }
 
 export interface PullHistoryEntry {
@@ -158,6 +164,9 @@ export interface ClientToServerEvents {
   "note:pull": () => void;
   "note:discard": (noteId: string) => void;
   "note:return": (noteId: string) => void;
+  "note:drag": (noteId: string, mx: number, my: number) => void;
+  "note:drag_end": (noteId: string) => void;
   "history:get": () => void;
   "history:clear": () => void;
+  "jar:refresh": () => void;
 }

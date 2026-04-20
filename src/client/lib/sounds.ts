@@ -2,42 +2,40 @@ type SoundName = "noteAdd" | "notePull" | "noteDiscard" | "noteReturn" | "userJo
 
 type SoundPack = Partial<Record<SoundName, string>>;
 
-// Procedural sound definitions: frequency, duration, type, volume envelope
-interface ToneParams {
-  freq: number;
-  duration: number;
-  type: OscillatorType;
-  ramp?: number;
-}
-
-const PROCEDURAL_SOUNDS: Record<SoundName, ToneParams> = {
-  noteAdd: { freq: 520, duration: 0.15, type: "sine", ramp: 800 },
-  notePull: { freq: 440, duration: 0.25, type: "triangle", ramp: 300 },
-  noteDiscard: { freq: 200, duration: 0.2, type: "sawtooth" },
-  noteReturn: { freq: 600, duration: 0.12, type: "sine", ramp: 400 },
-  userJoin: { freq: 880, duration: 0.1, type: "sine", ramp: 1200 },
-  userLeave: { freq: 330, duration: 0.15, type: "sine", ramp: 200 },
-};
-
+/**
+ * Web Audio synthesis tuned to a warm paper/cafe theme. The synth is
+ * composed from a few primitives:
+ *
+ *   - playNoise  : band-pass filtered noise for paper textures
+ *   - playTone   : single pitched sine/triangle with an envelope
+ *   - playBell   : additive bell synthesis (inharmonic partials with
+ *                  staggered decays — this is what actually makes a sound
+ *                  feel like a bell vs a pure tone)
+ *   - playThud   : low sine + short noise transient for impacts
+ *
+ * Every sound mixes 2–4 primitives to land a specific physical moment
+ * (paper landing, cork pop, crumple + bin, chime).
+ */
 class SoundManager {
   private enabled = true;
   private volume = 0.5;
   private customPack: SoundPack = {};
   private audioCache = new Map<string, HTMLAudioElement>();
   private audioCtx: AudioContext | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
+  private masterGain: GainNode | null = null;
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }
-
   isEnabled(): boolean {
     return this.enabled;
   }
 
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) this.masterGain.gain.value = this.volume;
   }
-
   getVolume(): number {
     return this.volume;
   }
@@ -46,7 +44,6 @@ class SoundManager {
     this.customPack = pack;
     this.audioCache.clear();
   }
-
   clearCustomPack(): void {
     this.customPack = {};
     this.audioCache.clear();
@@ -54,16 +51,16 @@ class SoundManager {
 
   play(sound: SoundName): void {
     if (!this.enabled) return;
-
-    // Try custom sound URL first
     const url = this.customPack[sound];
     if (url) {
       this.playUrl(url);
       return;
     }
-
-    // Fall back to procedural sound
-    this.playProcedural(sound);
+    try {
+      this.playProcedural(sound);
+    } catch {
+      // Web Audio unavailable — fail silently
+    }
   }
 
   private playUrl(url: string): void {
@@ -81,32 +78,332 @@ class SoundManager {
     }
   }
 
-  private playProcedural(sound: SoundName): void {
-    try {
-      if (!this.audioCtx) {
-        this.audioCtx = new AudioContext();
-      }
-      const ctx = this.audioCtx;
-      const params = PROCEDURAL_SOUNDS[sound];
+  private getCtx(): AudioContext {
+    if (!this.audioCtx) {
+      this.audioCtx = new AudioContext();
+      this.masterGain = this.audioCtx.createGain();
+      this.masterGain.gain.value = this.volume;
+      this.masterGain.connect(this.audioCtx.destination);
+    }
+    return this.audioCtx;
+  }
 
+  private getMaster(): AudioNode {
+    this.getCtx();
+    // getCtx always sets masterGain; narrow for the type system.
+    if (!this.masterGain) throw new Error("masterGain missing");
+    return this.masterGain;
+  }
+
+  private getNoiseBuffer(): AudioBuffer {
+    if (this.noiseBuffer) return this.noiseBuffer;
+    const ctx = this.getCtx();
+    const length = Math.floor(ctx.sampleRate * 1.5);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    // Pink-ish noise via simple one-pole filter on white noise
+    let last = 0;
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1;
+      last = 0.97 * last + 0.03 * white;
+      data[i] = last * 3;
+    }
+    this.noiseBuffer = buffer;
+    return buffer;
+  }
+
+  /** Short burst of filtered noise — paper / crumple textures. */
+  private playNoise(
+    opts: {
+      duration: number;
+      filterFreq: number;
+      filterQ?: number;
+      filterType?: BiquadFilterType;
+      peakGain: number;
+      attack?: number;
+      release?: number;
+      sweepTo?: number;
+    },
+    offset = 0,
+  ): void {
+    const ctx = this.getCtx();
+    const start = ctx.currentTime + offset;
+    const src = ctx.createBufferSource();
+    src.buffer = this.getNoiseBuffer();
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = opts.filterType ?? "bandpass";
+    filter.frequency.setValueAtTime(opts.filterFreq, start);
+    filter.Q.value = opts.filterQ ?? 1;
+    if (opts.sweepTo) {
+      filter.frequency.exponentialRampToValueAtTime(opts.sweepTo, start + opts.duration);
+    }
+
+    const gain = ctx.createGain();
+    const peak = opts.peakGain;
+    const attack = opts.attack ?? 0.005;
+    const release = opts.release ?? opts.duration - attack;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak, start + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + attack + release);
+
+    src.connect(filter).connect(gain).connect(this.getMaster());
+    src.start(start);
+    src.stop(start + opts.duration + 0.05);
+  }
+
+  /** Single pitched oscillator with an envelope — pops, ticks, swishes. */
+  private playTone(
+    opts: {
+      freq: number;
+      duration: number;
+      type?: OscillatorType;
+      peakGain: number;
+      attack?: number;
+      sweepTo?: number;
+    },
+    offset = 0,
+  ): void {
+    const ctx = this.getCtx();
+    const start = ctx.currentTime + offset;
+    const osc = ctx.createOscillator();
+    osc.type = opts.type ?? "sine";
+    osc.frequency.setValueAtTime(opts.freq, start);
+    if (opts.sweepTo) {
+      osc.frequency.exponentialRampToValueAtTime(opts.sweepTo, start + opts.duration);
+    }
+    const gain = ctx.createGain();
+    const attack = opts.attack ?? 0.005;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(opts.peakGain, start + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + opts.duration);
+
+    osc.connect(gain).connect(this.getMaster());
+    osc.start(start);
+    osc.stop(start + opts.duration + 0.05);
+  }
+
+  /**
+   * Additive bell synthesis. Partial ratios approximate a real bell (not
+   * integer multiples!) which is what gives the sound its "metallic warmth"
+   * instead of the boring cleanness of a pure sine. Higher partials decay
+   * faster than the fundamental, like a physical bell ringing out.
+   */
+  private playBell(opts: {
+    freq: number;
+    duration: number;
+    peakGain: number;
+    offset?: number;
+    partials?: Array<[ratio: number, amp: number, decay: number]>;
+  }): void {
+    const ctx = this.getCtx();
+    const start = ctx.currentTime + (opts.offset ?? 0);
+    const parts = opts.partials ?? [
+      [1.0, 1.0, 1.0],
+      [2.0, 0.5, 0.75], // octave
+      [3.0, 0.3, 0.55],
+      [4.16, 0.22, 0.4], // inharmonic partial — key to the bell timbre
+      [5.43, 0.15, 0.3],
+    ];
+    for (const [ratio, amp, decay] of parts) {
       const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(opts.freq * ratio, start);
 
-      osc.type = params.type;
-      osc.frequency.setValueAtTime(params.freq, ctx.currentTime);
-      if (params.ramp) {
-        osc.frequency.exponentialRampToValueAtTime(params.ramp, ctx.currentTime + params.duration);
+      const g = ctx.createGain();
+      const peak = opts.peakGain * amp;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(peak, start + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + opts.duration * decay);
+
+      osc.connect(g).connect(this.getMaster());
+      osc.start(start);
+      osc.stop(start + opts.duration + 0.05);
+    }
+  }
+
+  /** Low impact — noise transient + body resonance. */
+  private playThud(opts: {
+    freq: number;
+    duration: number;
+    peakGain: number;
+    offset?: number;
+  }): void {
+    this.playNoise(
+      {
+        duration: 0.05,
+        filterFreq: 250,
+        filterQ: 2,
+        peakGain: opts.peakGain * 0.6,
+        release: 0.04,
+      },
+      opts.offset ?? 0,
+    );
+    this.playTone(
+      {
+        freq: opts.freq,
+        duration: opts.duration,
+        type: "sine",
+        peakGain: opts.peakGain,
+        sweepTo: opts.freq * 0.5,
+      },
+      (opts.offset ?? 0) + 0.005,
+    );
+  }
+
+  private playProcedural(sound: SoundName): void {
+    switch (sound) {
+      case "noteAdd": {
+        // Short paper flutter + soft "plop" into paper below
+        this.playNoise({
+          duration: 0.08,
+          filterFreq: 4200,
+          filterQ: 0.8,
+          peakGain: 0.22,
+          release: 0.07,
+          sweepTo: 1800,
+        });
+        this.playTone(
+          {
+            freq: 520,
+            duration: 0.1,
+            type: "sine",
+            peakGain: 0.16,
+            sweepTo: 260,
+          },
+          0.04,
+        );
+        return;
       }
 
-      gain.gain.setValueAtTime(this.volume * 0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + params.duration);
+      case "notePull": {
+        // Paper sliding out + cheerful bell chime
+        this.playNoise({
+          duration: 0.18,
+          filterFreq: 2400,
+          filterQ: 3.5,
+          peakGain: 0.18,
+          sweepTo: 5500,
+          release: 0.14,
+        });
+        this.playBell({
+          freq: 784, // G5 — bright and welcoming
+          duration: 0.55,
+          peakGain: 0.28,
+          offset: 0.08,
+        });
+        return;
+      }
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + params.duration);
-    } catch {
-      // Web Audio not available
+      case "noteDiscard": {
+        // Crumple (layered noise with fast random amp) + hollow bin thud
+        // First crinkle
+        this.playNoise({
+          duration: 0.1,
+          filterFreq: 3500,
+          filterQ: 4,
+          peakGain: 0.28,
+          sweepTo: 1200,
+          release: 0.08,
+        });
+        // Second crinkle (offset gives crumple-like irregularity)
+        this.playNoise(
+          {
+            duration: 0.08,
+            filterFreq: 2000,
+            filterQ: 5,
+            peakGain: 0.24,
+            release: 0.07,
+            sweepTo: 900,
+          },
+          0.05,
+        );
+        // Bin thud
+        this.playThud({
+          freq: 150,
+          duration: 0.25,
+          peakGain: 0.42,
+          offset: 0.15,
+        });
+        // Small metallic tick
+        this.playTone(
+          {
+            freq: 1800,
+            duration: 0.04,
+            type: "sine",
+            peakGain: 0.08,
+          },
+          0.16,
+        );
+        return;
+      }
+
+      case "noteReturn": {
+        // Soft rising paper swish + gentle plucked tone
+        this.playNoise({
+          duration: 0.2,
+          filterFreq: 900,
+          filterQ: 2.5,
+          peakGain: 0.14,
+          sweepTo: 3400,
+          release: 0.18,
+        });
+        this.playBell({
+          freq: 523.25, // C5 — warm and settled
+          duration: 0.45,
+          peakGain: 0.18,
+          offset: 0.06,
+          partials: [
+            [1.0, 1.0, 1.0],
+            [2.0, 0.4, 0.65],
+            [3.0, 0.18, 0.4],
+          ],
+        });
+        return;
+      }
+
+      case "userJoin": {
+        // Warm major-third bell chime (C5 + E5) — welcoming
+        this.playBell({ freq: 523.25, duration: 0.7, peakGain: 0.24 }); // C5
+        this.playBell({ freq: 659.25, duration: 0.85, peakGain: 0.22, offset: 0.09 }); // E5
+        // A tiny noise shimmer for air
+        this.playNoise(
+          {
+            duration: 0.08,
+            filterFreq: 8000,
+            filterQ: 2,
+            peakGain: 0.05,
+            release: 0.07,
+          },
+          0.02,
+        );
+        return;
+      }
+
+      case "userLeave": {
+        // Descending major-third chime (E5 → C5), softer
+        this.playBell({
+          freq: 659.25,
+          duration: 0.55,
+          peakGain: 0.14,
+          partials: [
+            [1.0, 1.0, 1.0],
+            [2.0, 0.4, 0.6],
+            [3.0, 0.2, 0.4],
+          ],
+        });
+        this.playBell({
+          freq: 523.25,
+          duration: 0.75,
+          peakGain: 0.14,
+          offset: 0.1,
+          partials: [
+            [1.0, 1.0, 1.2],
+            [2.0, 0.35, 0.7],
+          ],
+        });
+        return;
+      }
     }
   }
 }

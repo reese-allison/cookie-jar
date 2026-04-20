@@ -1,4 +1,5 @@
 import { CURSOR_BROADCAST_INTERVAL_MS } from "@shared/constants";
+import { createThrottle } from "@shared/throttle";
 import type { ClientToServerEvents, NoteStyle, ServerToClientEvents } from "@shared/types";
 import { useCallback, useEffect, useRef } from "react";
 import { io, type Socket } from "socket.io-client";
@@ -10,7 +11,9 @@ type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 export function useSocket() {
   const socketRef = useRef<TypedSocket | null>(null);
-  const throttleRef = useRef<number>(0);
+  // Shared throttle helper — tested in tests/shared/throttle.test.ts.
+  const cursorThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
+  const dragThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
 
   const {
     setRoom,
@@ -36,6 +39,9 @@ export function useSocket() {
     setHistory,
     setAdding,
     setPulling,
+    setPeerDrag,
+    clearPeerDrag,
+    clearPeerDragsByUser,
   } = useNoteStore();
   const noteReset = useNoteStore((s) => s.reset);
 
@@ -65,12 +71,22 @@ export function useSocket() {
       setAdding(false);
       setPulling(false);
     });
+    socket.on("auth:expired", () => {
+      // Server is about to disconnect us — surface a specific message so the
+      // UI can point the user at sign-in rather than showing a generic
+      // "disconnected" banner.
+      setError("Your session expired. Please sign in again.");
+    });
+    socket.on("rate_limited", (event, retryInMs) => {
+      setError(`You're doing that too fast (${event}). Try again in ${retryInMs}ms.`);
+    });
     socket.on("room:member_joined", (member) => {
       addMember(member);
       soundManager.play("userJoin");
     });
     socket.on("room:member_left", (memberId) => {
       removeMember(memberId);
+      clearPeerDragsByUser(memberId);
       soundManager.play("userLeave");
     });
     socket.on("room:locked", () => setLocked(true));
@@ -117,6 +133,12 @@ export function useSocket() {
       notesRevealed(notes);
       soundManager.play("notePull");
     });
+    socket.on("note:drag", (noteId, draggerId, mx, my) => {
+      setPeerDrag(noteId, { draggerId, mx, my });
+    });
+    socket.on("note:drag_end", (noteId) => {
+      clearPeerDrag(noteId);
+    });
     socket.on("history:list", (entries) => setHistory(entries));
 
     return () => {
@@ -142,6 +164,9 @@ export function useSocket() {
     setAdding,
     setPulling,
     setHistory,
+    setPeerDrag,
+    clearPeerDrag,
+    clearPeerDragsByUser,
   ]);
 
   const joinRoom = useCallback(
@@ -168,9 +193,7 @@ export function useSocket() {
   }, [roomReset, noteReset]);
 
   const moveCursor = useCallback((x: number, y: number) => {
-    const now = Date.now();
-    if (now - throttleRef.current < CURSOR_BROADCAST_INTERVAL_MS) return;
-    throttleRef.current = now;
+    if (!cursorThrottleRef.current()) return;
     socketRef.current?.emit("cursor:move", { x, y });
   }, []);
 
@@ -211,6 +234,19 @@ export function useSocket() {
     socketRef.current?.emit("history:clear");
   }, []);
 
+  const dragNote = useCallback((noteId: string, mx: number, my: number) => {
+    if (!dragThrottleRef.current()) return;
+    socketRef.current?.emit("note:drag", noteId, mx, my);
+  }, []);
+
+  const dragNoteEnd = useCallback((noteId: string) => {
+    socketRef.current?.emit("note:drag_end", noteId);
+  }, []);
+
+  const refreshJar = useCallback(() => {
+    socketRef.current?.emit("jar:refresh");
+  }, []);
+
   return {
     joinRoom,
     leaveRoom,
@@ -223,5 +259,8 @@ export function useSocket() {
     returnNote,
     getHistory,
     clearHistory,
+    dragNote,
+    dragNoteEnd,
+    refreshJar,
   };
 }

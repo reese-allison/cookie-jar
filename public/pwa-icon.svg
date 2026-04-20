@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cookie Jar">
+  <rect width="512" height="512" rx="96" fill="#fdfbf7"/>
+  <!-- Jar body -->
+  <rect x="128" y="160" width="256" height="272" rx="48" fill="#ffffff" stroke="#c67b5c" stroke-width="18"/>
+  <!-- Jar rim -->
+  <rect x="112" y="128" width="288" height="48" rx="24" fill="#c67b5c"/>
+  <!-- Cork -->
+  <rect x="176" y="80" width="160" height="64" rx="24" fill="#a15419"/>
+  <!-- Note -->
+  <g transform="rotate(-6 256 304)">
+    <rect x="192" y="256" width="128" height="112" rx="10" fill="#fef9c3"/>
+    <line x1="208" y1="284" x2="304" y2="284" stroke="#c67b5c" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+    <line x1="208" y1="308" x2="296" y2="308" stroke="#c67b5c" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+    <line x1="208" y1="332" x2="280" y2="332" stroke="#c67b5c" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  </g>
+</svg>

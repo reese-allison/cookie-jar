@@ -9,6 +9,12 @@ export interface SocketAuthData {
     email: string;
     image?: string;
   } | null;
+  /**
+   * Unix ms timestamp of when the underlying session expires. Set when we
+   * resolve a real session at handshake. Anonymous or unauth'd sockets leave
+   * this undefined. Used by the session-expiry checker to kick stale sockets.
+   */
+  sessionExpiresAt?: number;
 }
 
 /**
@@ -33,12 +39,17 @@ export async function socketAuthMiddleware(
     });
 
     if (session?.user) {
-      (socket.data as SocketAuthData).user = {
+      const data = socket.data as SocketAuthData;
+      data.user = {
         id: session.user.id,
         displayName: session.user.name,
         email: session.user.email,
         image: session.user.image ?? undefined,
       };
+      const expiresAt = session.session?.expiresAt;
+      if (expiresAt) {
+        data.sessionExpiresAt = new Date(expiresAt).getTime();
+      }
     } else {
       (socket.data as SocketAuthData).user = null;
     }

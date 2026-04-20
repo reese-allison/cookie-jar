@@ -10,7 +10,7 @@ afterEach(cleanup);
 describe("NoteForm component", () => {
   it("renders the form with a text input and submit button", () => {
     render(<NoteForm onSubmit={vi.fn()} disabled={false} />);
-    expect(screen.getByPlaceholderText("Write a note...")).toBeDefined();
+    expect(screen.getByPlaceholderText(/Jot something down/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /add to jar/i })).toBeDefined();
   });
 
@@ -18,7 +18,7 @@ describe("NoteForm component", () => {
     const onSubmit = vi.fn();
     render(<NoteForm onSubmit={onSubmit} disabled={false} />);
 
-    const textarea = screen.getByPlaceholderText("Write a note...");
+    const textarea = screen.getByPlaceholderText(/Jot something down/i);
     fireEvent.change(textarea, { target: { value: "Go to the park" } });
     fireEvent.click(screen.getByRole("button", { name: /add to jar/i }));
 
@@ -32,7 +32,7 @@ describe("NoteForm component", () => {
     const onSubmit = vi.fn();
     render(<NoteForm onSubmit={onSubmit} disabled={false} />);
 
-    const textarea = screen.getByPlaceholderText("Write a note...");
+    const textarea = screen.getByPlaceholderText(/Jot something down/i);
     fireEvent.change(textarea, { target: { value: "Test" } });
     fireEvent.click(screen.getByRole("button", { name: /add to jar/i }));
 
@@ -47,7 +47,7 @@ describe("NoteForm component", () => {
 
   it("disables the form when disabled prop is true", () => {
     render(<NoteForm onSubmit={vi.fn()} disabled={true} />);
-    expect(screen.getByPlaceholderText("Write a note...")).toBeDisabled();
+    expect(screen.getByPlaceholderText(/Jot something down/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /add to jar/i })).toBeDisabled();
   });
 
@@ -55,7 +55,7 @@ describe("NoteForm component", () => {
     const onSubmit = vi.fn();
     render(<NoteForm onSubmit={onSubmit} disabled={false} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Write a note..."), {
+    fireEvent.change(screen.getByPlaceholderText(/Jot something down/i), {
       target: { value: "Check this" },
     });
     fireEvent.change(screen.getByPlaceholderText("URL (optional)"), {

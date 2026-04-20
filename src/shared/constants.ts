@@ -4,6 +4,14 @@ export const DEFAULT_LIMITS = {
   maxViewers: 50,
 } as const;
 
+// Hard caps — prevent a single jar from DoS'ing a pod. These are server-side
+// enforced on both note:add and bulk-import. Configurable later if per-tier
+// limits become a thing, but baseline values have to be finite.
+export const MAX_NOTES_PER_JAR = 1000;
+export const MAX_BULK_IMPORT = 500;
+export const MAX_NOTE_TEXT_LENGTH = 500;
+export const MAX_DISPLAY_NAME_LENGTH = 30;
+
 // Room settings
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I/O/1/0 to avoid confusion

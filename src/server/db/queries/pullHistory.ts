@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { Queryable } from "../transaction";
 
 export interface PullHistoryEntry {
   id: string;
@@ -17,8 +18,8 @@ interface RecordPullInput {
   roomId?: string;
 }
 
-export async function recordPull(pool: pg.Pool, input: RecordPullInput): Promise<void> {
-  await pool.query(
+export async function recordPull(db: Queryable, input: RecordPullInput): Promise<void> {
+  await db.query(
     `INSERT INTO pull_history (jar_id, note_id, pulled_by, room_id)
      VALUES ($1, $2, $3, $4)`,
     [input.jarId, input.noteId, input.pulledBy, input.roomId ?? null],

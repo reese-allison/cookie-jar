@@ -18,7 +18,7 @@ export function CreateJar({ onCreate, isCreating }: CreateJarProps) {
 
   return (
     <div className="create-jar">
-      <h3>Start a new jar</h3>
+      <h2>Start a new jar</h2>
       <form onSubmit={handleSubmit}>
         <input
           type="text"

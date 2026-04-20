@@ -1,5 +1,6 @@
 import type { Note, NoteState, NoteStyle } from "@shared/types";
 import type pg from "pg";
+import type { Queryable } from "../transaction";
 
 interface CreateNoteInput {
   jarId: string;
@@ -118,11 +119,11 @@ export async function updateNote(
 }
 
 export async function pullRandomNote(
-  pool: pg.Pool,
+  db: Queryable,
   jarId: string,
   pulledBy?: string,
 ): Promise<Note | null> {
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `UPDATE notes
      SET state = 'pulled', pulled_by = $2, updated_at = now()
      WHERE id = (

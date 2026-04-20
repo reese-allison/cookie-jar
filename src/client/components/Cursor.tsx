@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface CursorProps {
   x: number;
   y: number;
@@ -5,7 +7,11 @@ interface CursorProps {
   color: string;
 }
 
-export function Cursor({ x, y, displayName, color }: CursorProps) {
+// Memoized: a single cursor:moved packet updates one entry in the cursors
+// Map, which causes the store subscriber to re-render. Without memo, every
+// peer's Cursor would re-render on every mouse tick. Props are primitives, so
+// React.memo's default shallow equality is the right comparator.
+export const Cursor = memo(function Cursor({ x, y, displayName, color }: CursorProps) {
   return (
     <div
       className="cursor"
@@ -39,4 +45,4 @@ export function Cursor({ x, y, displayName, color }: CursorProps) {
       </span>
     </div>
   );
-}
+});

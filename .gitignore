@@ -47,3 +47,15 @@ dump.rdb
 
 # User uploads (local dev)
 public/uploads/
+
+# Playwright
+playwright-report/
+test-results/
+.playwright-cache/
+.playwright-mcp/
+tmp/
+
+# Local screenshots / source maps
+*.png
+!public/**/*.png
+index.js.map

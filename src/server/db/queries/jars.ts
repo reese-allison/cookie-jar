@@ -1,5 +1,17 @@
-import type { Jar, JarAppearance, JarConfig } from "@shared/types";
+import type { Jar, JarAppearance, JarConfig, RoomState } from "@shared/types";
 import type pg from "pg";
+import type { Queryable } from "../transaction";
+import { withTransaction } from "../transaction";
+
+export interface ActiveRoomSummary {
+  code: string;
+  state: RoomState;
+  createdAt: string;
+}
+
+export interface OwnedJarWithRooms extends Jar {
+  activeRooms: ActiveRoomSummary[];
+}
 
 interface CreateJarInput {
   ownerId: string;
@@ -31,8 +43,8 @@ function rowToJar(row: Record<string, unknown>): Jar {
   };
 }
 
-export async function createJar(pool: pg.Pool, input: CreateJarInput): Promise<Jar> {
-  const { rows } = await pool.query(
+export async function createJar(db: Queryable, input: CreateJarInput): Promise<Jar> {
+  const { rows } = await db.query(
     `INSERT INTO jars (owner_id, name, appearance, config, is_template, is_public)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
@@ -61,6 +73,40 @@ export async function listJarsByOwner(pool: pg.Pool, ownerId: string): Promise<J
   return rows.map(rowToJar);
 }
 
+export async function listOwnedJarsWithRooms(
+  pool: pg.Pool,
+  ownerId: string,
+): Promise<OwnedJarWithRooms[]> {
+  const { rows } = await pool.query(
+    `SELECT j.*,
+       COALESCE(
+         (SELECT json_agg(json_build_object(
+                   'code', r.code,
+                   'state', r.state,
+                   'createdAt', r.created_at
+                 ) ORDER BY r.created_at DESC)
+          FROM rooms r
+          WHERE r.jar_id = j.id AND r.state != 'closed'),
+         '[]'::json
+       ) AS active_rooms
+     FROM jars j
+     WHERE j.owner_id = $1
+     ORDER BY j.created_at DESC`,
+    [ownerId],
+  );
+  return rows.map((row) => {
+    const jar = rowToJar(row);
+    const activeRooms = (
+      row.active_rooms as Array<{
+        code: string;
+        state: RoomState;
+        createdAt: string;
+      }>
+    ).map((r) => ({ code: r.code, state: r.state, createdAt: r.createdAt }));
+    return { ...jar, activeRooms };
+  });
+}
+
 export async function listTemplates(pool: pg.Pool): Promise<Jar[]> {
   const { rows } = await pool.query("SELECT * FROM jars WHERE is_template = true ORDER BY name");
   return rows.map(rowToJar);
@@ -74,23 +120,23 @@ export async function cloneJar(
   const source = await getJarById(pool, sourceJarId);
   if (!source) return null;
 
-  // Create the new jar
-  const cloned = await createJar(pool, {
-    ownerId: newOwnerId,
-    name: source.name,
-    appearance: source.appearance,
-    config: source.config,
+  return withTransaction(pool, async (client) => {
+    const cloned = await createJar(client, {
+      ownerId: newOwnerId,
+      name: source.name,
+      appearance: source.appearance,
+      config: source.config,
+    });
+
+    await client.query(
+      `INSERT INTO notes (jar_id, text, url, style, state)
+       SELECT $1, text, url, style, 'in_jar'
+       FROM notes WHERE jar_id = $2 AND state != 'discarded'`,
+      [cloned.id, sourceJarId],
+    );
+
+    return cloned;
   });
-
-  // Copy all notes from the source jar
-  await pool.query(
-    `INSERT INTO notes (jar_id, text, url, style, state)
-     SELECT $1, text, url, style, 'in_jar'
-     FROM notes WHERE jar_id = $2 AND state != 'discarded'`,
-    [cloned.id, sourceJarId],
-  );
-
-  return cloned;
 }
 
 export async function updateJar(

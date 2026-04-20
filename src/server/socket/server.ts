@@ -3,17 +3,35 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
 import { createAdapter } from "@socket.io/redis-adapter";
 import Redis from "ioredis";
 import { Server } from "socket.io";
+import { logger } from "../logger";
 import { type SocketAuthData, socketAuthMiddleware } from "./authMiddleware";
 import { createSocketContext } from "./context";
+import { createDedupStore } from "./dedupStore";
+import type { SocketDeps } from "./deps";
 import { IdleTimeoutManager } from "./idleTimeout";
+import { createKickBus } from "./kickBus";
 import { registerNoteHandlers } from "./noteHandler";
+import { createPresenceStore } from "./presenceStore";
+import { attachRedisHealthLogger } from "./redisHealthLogger";
 import { registerRoomHandlers } from "./roomHandler";
+import { createSealedNotesStore } from "./sealedNotesStore";
+import { startSessionExpiryChecker } from "./sessionExpiryChecker";
 
 export type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
 
+export interface SocketServer {
+  io: TypedServer;
+  stop(): Promise<void>;
+}
+
 export function createSocketServer(httpServer: HttpServer): TypedServer {
+  const { io } = buildSocketServer(httpServer);
+  return io;
+}
+
+export function buildSocketServer(httpServer: HttpServer): SocketServer {
   const io: TypedServer = new Server(httpServer, {
     cors: {
       origin: clientUrl,
@@ -25,12 +43,44 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
   const pubClient = new Redis(redisUrl);
   const subClient = pubClient.duplicate();
-  pubClient.on("error", (err) => console.error("Redis pub error:", err.message));
-  subClient.on("error", (err) => console.error("Redis sub error:", err.message));
+  // Dedicated client for application state (sealed notes, dedup, presence).
+  const stateClient = pubClient.duplicate();
+  // Dedicated subscriber for the kick bus — a subscribed ioredis client can't
+  // issue normal commands, so the bus needs its own.
+  const kickSubClient = pubClient.duplicate();
+  pubClient.on("error", (err) => logger.error({ err, channel: "pub" }, "redis error"));
+  subClient.on("error", (err) => logger.error({ err, channel: "sub" }, "redis error"));
+  stateClient.on("error", (err) => logger.error({ err, channel: "state" }, "redis error"));
+  kickSubClient.on("error", (err) => logger.error({ err, channel: "kick" }, "redis error"));
+  // Log lifecycle transitions so "Redis went down for N seconds" shows up
+  // without needing a metrics dashboard. ioredis auto-reconnects regardless.
+  attachRedisHealthLogger(pubClient, logger, "pub");
+  attachRedisHealthLogger(subClient, logger, "sub");
+  attachRedisHealthLogger(stateClient, logger, "state");
+  attachRedisHealthLogger(kickSubClient, logger, "kick");
   io.adapter(createAdapter(pubClient, subClient));
 
-  // Idle timeout manager for auto-closing inactive rooms
-  const idleTimeouts = new IdleTimeoutManager();
+  // Idle timeout manager — Redis-backed so cursor activity on one pod keeps
+  // another pod's local timer from closing the room prematurely.
+  const idleTimeouts = new IdleTimeoutManager(stateClient);
+
+  // Shared Redis-backed state accessed by multiple handlers.
+  const kickBus = createKickBus(pubClient, kickSubClient);
+  const deps: SocketDeps = {
+    sealedNotesStore: createSealedNotesStore(stateClient),
+    dedupStore: createDedupStore(stateClient),
+    presenceStore: createPresenceStore(stateClient),
+    kickBus,
+  };
+
+  // Subscribe for cross-pod kick requests: the pod that actually owns the
+  // socket disconnects it.
+  kickBus.onKick(({ socketId, reason }) => {
+    const sock = io.sockets.sockets.get(socketId);
+    if (!sock) return;
+    if (reason) sock.emit("room:error", reason);
+    sock.disconnect();
+  });
 
   // Auth middleware — verifies session cookie on handshake
   io.use(socketAuthMiddleware);
@@ -38,9 +88,25 @@ export function createSocketServer(httpServer: HttpServer): TypedServer {
   io.on("connection", (socket) => {
     const authData = (socket.data as SocketAuthData) ?? { user: null };
     const ctx = createSocketContext(authData);
-    registerRoomHandlers(io, socket, ctx, idleTimeouts);
-    registerNoteHandlers(io, socket, ctx);
+    registerRoomHandlers(io, socket, ctx, deps, idleTimeouts);
+    registerNoteHandlers(io, socket, ctx, deps);
   });
 
-  return io;
+  // Periodic check for expired sessions on long-lived sockets.
+  const sessionChecker = startSessionExpiryChecker({ io, logger });
+
+  return {
+    io,
+    async stop() {
+      sessionChecker.stop();
+      await kickBus.close();
+      await io.close();
+      await Promise.all([
+        pubClient.quit(),
+        subClient.quit(),
+        stateClient.quit(),
+        kickSubClient.quit(),
+      ]);
+    },
+  };
 }

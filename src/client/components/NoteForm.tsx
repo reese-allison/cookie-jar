@@ -1,5 +1,6 @@
 import type { NoteStyle } from "@shared/types";
 import { useState } from "react";
+import { NoteStylePicker } from "./NoteStylePicker";
 
 interface NoteFormSubmission {
   text: string;
@@ -15,6 +16,7 @@ interface NoteFormProps {
 export function NoteForm({ onSubmit, disabled }: NoteFormProps) {
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
+  const [style, setStyle] = useState<NoteStyle>("sticky");
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,7 +25,7 @@ export function NoteForm({ onSubmit, disabled }: NoteFormProps) {
 
     const note: NoteFormSubmission = {
       text: trimmedText,
-      style: "sticky",
+      style,
     };
     if (url.trim()) {
       note.url = url.trim();
@@ -34,12 +36,13 @@ export function NoteForm({ onSubmit, disabled }: NoteFormProps) {
   };
 
   return (
-    <form className="note-form" onSubmit={handleSubmit}>
+    <form className={`note-form note-form--${style}`} onSubmit={handleSubmit}>
+      <NoteStylePicker value={style} onChange={setStyle} />
       <textarea
         className="note-form__text"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Write a note..."
+        placeholder={PLACEHOLDERS[style]}
         maxLength={500}
         disabled={disabled}
       />
@@ -57,3 +60,11 @@ export function NoteForm({ onSubmit, disabled }: NoteFormProps) {
     </form>
   );
 }
+
+const PLACEHOLDERS: Record<NoteStyle, string> = {
+  sticky: "Jot something down...",
+  index_card: "Write a neat note...",
+  napkin: "Scribble on a napkin...",
+  parchment: "Inscribe your note...",
+  fortune_cookie: "Share a tiny wisdom...",
+};

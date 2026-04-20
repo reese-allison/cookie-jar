@@ -35,6 +35,17 @@ jarRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// List the current user's jars, each with any active (non-closed) rooms.
+// Registered before /:id so "mine" isn't matched as an id.
+jarRouter.get("/mine", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const jars = await jarQueries.listOwnedJarsWithRooms(pool, getUser(req).id);
+    res.json(jars);
+  } catch (_err) {
+    res.status(500).json({ error: "Failed to list your jars" });
+  }
+});
+
 // Get a jar by ID (public)
 jarRouter.get("/:id", async (req, res) => {
   try {

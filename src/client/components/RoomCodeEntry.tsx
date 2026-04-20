@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { AuthButtons } from "./AuthButtons";
 import { CreateJar } from "./CreateJar";
+import { SegmentedControl } from "./SegmentedControl";
 import { TemplateBrowser } from "./TemplateBrowser";
-import { UserMenu } from "./UserMenu";
+
+type Tab = "join" | "host";
 
 interface RoomCodeEntryProps {
   onJoin: (code: string, displayName: string) => void;
@@ -23,6 +25,7 @@ export function RoomCodeEntry({
   user,
   onCloneTemplate,
 }: RoomCodeEntryProps) {
+  const [tab, setTab] = useState<Tab>("join");
   const [code, setCode] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -39,61 +42,72 @@ export function RoomCodeEntry({
     <div className="room-code-entry">
       <h1>Cookie Jar</h1>
 
-      {user ? (
-        <UserMenu displayName={user.displayName} image={user.image} />
-      ) : (
-        <div className="room-code-entry__auth">
-          <AuthButtons />
-          <p className="room-code-entry__guest-note">Or join as a guest (view only)</p>
-        </div>
-      )}
-
-      {onCreateJar && <CreateJar onCreate={onCreateJar} isCreating={isCreating} />}
-
-      {onCloneTemplate && <TemplateBrowser onClone={onCloneTemplate} isCloning={isCreating} />}
-
-      <div className="room-code-entry__divider">
-        <span>or join an existing room</span>
+      <div className="room-code-entry__tabs">
+        <SegmentedControl<Tab>
+          label="What would you like to do?"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "join", label: "Join" },
+            { value: "host", label: "Host" },
+          ]}
+        />
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="Room Code"
-          aria-label="Room code"
-          maxLength={6}
-          className="room-code-input"
-          autoComplete="off"
-          disabled={isJoining}
-        />
-        {user ? (
-          <input
-            type="text"
-            value={user.displayName}
-            placeholder="Your Name"
-            aria-label="Display name"
-            maxLength={30}
-            disabled
-            readOnly
-          />
-        ) : (
-          <input
-            type="text"
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
-            aria-label="Guest name"
-            placeholder="Guest Name"
-            maxLength={30}
-            disabled={isJoining}
-          />
-        )}
-        <button type="submit" disabled={isJoining || !code.trim() || !displayName.trim()}>
-          {isJoining ? "Joining..." : "Join Room"}
-        </button>
-      </form>
-      {error && <p className="error">{error}</p>}
+      {tab === "join" ? (
+        <>
+          <form onSubmit={handleSubmit}>
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="Room Code"
+              aria-label="Room code"
+              maxLength={6}
+              className="room-code-input"
+              autoComplete="off"
+              disabled={isJoining}
+            />
+            {user ? (
+              <input
+                type="text"
+                value={user.displayName}
+                placeholder="Your Name"
+                aria-label="Display name"
+                maxLength={30}
+                disabled
+                readOnly
+              />
+            ) : (
+              <input
+                type="text"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                aria-label="Guest name"
+                placeholder="Guest Name"
+                maxLength={30}
+                disabled={isJoining}
+              />
+            )}
+            <button type="submit" disabled={isJoining || !code.trim() || !displayName.trim()}>
+              {isJoining ? "Joining..." : "Join Room"}
+            </button>
+          </form>
+          {error && <p className="error">{error}</p>}
+        </>
+      ) : (
+        <div className="room-code-entry__host">
+          {!user && (
+            <div className="room-code-entry__auth">
+              <p className="room-code-entry__auth-note">Sign in to host your own jar</p>
+              <AuthButtons />
+            </div>
+          )}
+          {onCreateJar && <CreateJar onCreate={onCreateJar} isCreating={isCreating} />}
+          {onCloneTemplate && <TemplateBrowser onClone={onCloneTemplate} isCloning={isCreating} />}
+          {error && <p className="error">{error}</p>}
+        </div>
+      )}
     </div>
   );
 }

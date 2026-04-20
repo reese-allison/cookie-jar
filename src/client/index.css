@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@700&display=swap");
-
 /* ==========================================================================
    Design Tokens
    ========================================================================== */
@@ -8,13 +6,13 @@
   --color-bg: #fdfbf7;
   --color-surface: #ffffff;
   --color-primary: #c67b5c;
-  --color-primary-hover: #b5651d;
+  --color-primary-hover: #a15419;
   --color-text: #2d2d2d;
   --color-text-muted: #6b6358;
   --color-border: #e8dfd1;
   --color-cream: #f5f0e1;
   --color-error: #d4483b;
-  --color-success: #5d8a3c;
+  --color-success: #3f6128;
 
   --shadow-card: 0 4px 20px rgba(45, 45, 45, 0.08);
   --shadow-hard: 3px 3px 0 var(--color-text);
@@ -184,7 +182,7 @@ textarea:focus-visible {
   border-color: var(--color-primary);
 }
 
-.room-code-entry input:not(.room-code-input) {
+.room-code-entry > form input:not(.room-code-input) {
   font-family: "Nunito", sans-serif;
   font-size: 1rem;
   padding: 0.75rem 1rem;
@@ -196,7 +194,7 @@ textarea:focus-visible {
   transition: border-color var(--transition-fast);
 }
 
-.room-code-entry button {
+.room-code-entry > form button {
   font-family: "Nunito", sans-serif;
   font-size: 1rem;
   font-weight: 700;
@@ -212,15 +210,15 @@ textarea:focus-visible {
     transform var(--transition-fast);
 }
 
-.room-code-entry button:hover:not(:disabled) {
+.room-code-entry > form button:hover:not(:disabled) {
   background: var(--color-primary-hover);
 }
 
-.room-code-entry button:active:not(:disabled) {
+.room-code-entry > form button:active:not(:disabled) {
   transform: scale(0.97);
 }
 
-.room-code-entry button:disabled {
+.room-code-entry > form button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -231,12 +229,30 @@ textarea:focus-visible {
   text-align: center;
 }
 
+.room-code-entry__tabs {
+  margin-bottom: 1.5rem;
+}
+
+.room-code-entry__host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 360px;
+}
+
 .room-code-entry__auth {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
+}
+
+.room-code-entry__auth-note {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }
 
 .room-code-entry__guest-note {
@@ -254,7 +270,7 @@ textarea:focus-visible {
   text-align: center;
 }
 
-.create-jar h3 {
+.create-jar h2 {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -469,6 +485,12 @@ textarea:focus-visible {
   transform: scale(0.97);
 }
 
+.auth-button--anonymous {
+  border-style: dashed;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 /* ==========================================================================
    User Menu
    ========================================================================== */
@@ -634,8 +656,15 @@ textarea:focus-visible {
 .room-view {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
+}
+
+main:has(.room-view) {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 /* ==========================================================================
@@ -652,14 +681,40 @@ textarea:focus-visible {
 }
 
 .room-code {
+  position: relative;
   font-family: "JetBrains Mono", monospace;
   font-size: 1rem;
   font-weight: 700;
   color: #fff;
   letter-spacing: 0.12em;
-  background: var(--color-primary);
+  background: var(--color-primary-hover);
   padding: 0.25rem 0.75rem;
+  border: none;
   border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.room-code:hover {
+  background: var(--color-primary);
+}
+
+.room-code__copied {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: "Nunito", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  color: #fff;
+  background: var(--color-success);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .room-state {
@@ -669,7 +724,7 @@ textarea:focus-visible {
   letter-spacing: 0.04em;
   padding: 0.25rem 0.75rem;
   border-radius: var(--radius-pill);
-  background: rgba(93, 138, 60, 0.12);
+  background: rgba(63, 97, 40, 0.14);
   color: var(--color-success);
 }
 
@@ -704,6 +759,68 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
+   Room Header Overflow Menu (mobile)
+   ========================================================================== */
+
+.room-actions--collapsed {
+  /* Only the hamburger toggle lives here on mobile. */
+  gap: 0;
+}
+
+.room-header-menu {
+  position: relative;
+}
+
+.room-header-menu__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.room-header-menu__toggle:hover {
+  background: var(--color-cream);
+  color: var(--color-primary-hover);
+}
+
+.room-header-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 180px;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lifted);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  animation: jar-drawer-in var(--transition-fast) ease-out;
+}
+
+/* Full-width stacked action buttons inside the overflow menu. */
+.room-header-menu__panel > button,
+.room-header-menu__panel .sound-toggle,
+.room-header-menu__panel .pull-history__toggle,
+.room-header-menu__panel .room-settings-btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* ==========================================================================
    Members
    ========================================================================== */
 
@@ -712,7 +829,7 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--color-border);
 }
 
-.room-members h3 {
+.room-members h2 {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -771,36 +888,18 @@ textarea:focus-visible {
   transform: scale(1.05);
 }
 
+/* The jar silhouette IS the button — no surrounding rectangle, no backdrop. */
 .jar__body {
   position: relative;
-  width: 200px;
-  height: 250px;
-  border: 2px solid rgba(198, 123, 92, 0.3);
-  border-radius: var(--radius-organic);
-  background: linear-gradient(
-    155deg,
-    rgba(253, 251, 247, 0.7) 0%,
-    rgba(245, 240, 225, 0.4) 50%,
-    rgba(198, 123, 92, 0.08) 100%
-  );
-  backdrop-filter: blur(4px);
+  padding: 0;
+  border: none;
+  background: transparent;
   cursor: pointer;
-  transition: all var(--transition-normal);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: "Nunito", sans-serif;
+  transition: transform var(--transition-fast);
 }
 
 .jar__body:hover:not(:disabled) {
-  background: linear-gradient(
-    155deg,
-    rgba(253, 251, 247, 0.85) 0%,
-    rgba(245, 240, 225, 0.5) 50%,
-    rgba(198, 123, 92, 0.12) 100%
-  );
-  box-shadow: 0 6px 24px rgba(198, 123, 92, 0.18);
+  transform: translateY(-3px);
 }
 
 .jar__body:disabled {
@@ -808,25 +907,49 @@ textarea:focus-visible {
   cursor: not-allowed;
 }
 
-.jar__image {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--color-bg), var(--color-border));
-  margin-bottom: 0.5rem;
+.jar__svg-wrap {
+  position: relative;
+  width: 200px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .jar__custom-image {
-  max-width: 160px;
-  max-height: 160px;
+  max-width: 200px;
+  max-height: 240px;
   object-fit: contain;
-  margin-bottom: 0.5rem;
+  filter: drop-shadow(0 6px 12px rgba(45, 45, 45, 0.15));
+  /* Promote to its own compositor layer so the drop-shadow doesn't
+     re-rasterize every frame of the hover wobble. */
+  will-change: transform;
+}
+
+.default-jar-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 6px 12px rgba(45, 45, 45, 0.15));
+  transition: transform var(--transition-fast);
+  will-change: transform;
+}
+
+.jar__body:hover:not(:disabled) .default-jar-svg {
+  transform: rotate(-1deg);
 }
 
 .jar__count {
-  font-size: 2.25rem;
-  font-weight: 700;
+  /* Floats inside the jar body — the glass reads it as its "contents". */
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: "Caveat", cursive;
+  font-size: 3rem;
+  font-weight: 600;
   color: var(--color-primary);
+  pointer-events: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .jar__label {
@@ -872,27 +995,46 @@ textarea:focus-visible {
   font-size: 1.4rem;
   line-height: 32px;
   padding: 0.75rem;
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--color-surface);
   resize: vertical;
   min-height: 96px;
   color: var(--color-text);
+  position: relative;
+  z-index: 1;
 }
 
 .note-form__text::placeholder {
   font-family: "Caveat", cursive;
-  color: #b5a997;
+  color: #8a7f71;
+}
+
+.note-form__text:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 .note-form__url {
   font-family: "Nunito", sans-serif;
   font-size: 0.875rem;
   padding: 0.5rem 0.75rem;
+  min-height: 40px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--color-surface);
   color: var(--color-text);
+  position: relative;
+  z-index: 1;
+}
+
+.note-form__url::placeholder {
+  color: #b5a997;
+}
+
+.note-form__url:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 .note-form__submit {
@@ -924,6 +1066,127 @@ textarea:focus-visible {
   cursor: not-allowed;
 }
 
+/* --- Note form style variants: the form mimics the paper you're writing on --- */
+
+/* Sticky: pale yellow post-it pad */
+.note-form--sticky {
+  background: #fef9c3;
+  border-color: #e0d47a;
+}
+.note-form--sticky .note-form__text {
+  color: #4a3a00;
+}
+
+/* Index card: default (ruled + red margin). Keep the ruled notepad look. */
+.note-form--index_card {
+  background:
+    linear-gradient(to right, transparent 30px, #f8a2a2 30px, #f8a2a2 31px, transparent 31px),
+    repeating-linear-gradient(transparent, transparent 31px, #dbe7f3 31px, #dbe7f3 32px), #ffffff;
+  border-color: #e6e9ef;
+  padding-left: 2.75rem;
+}
+
+/* Napkin: soft pink, casual */
+.note-form--napkin {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(212, 72, 59, 0.05) 0,
+      rgba(212, 72, 59, 0.05) 2px,
+      transparent 2px,
+      transparent 14px
+    ),
+    #fee2e2;
+  border-color: #f0b4b4;
+}
+.note-form--napkin .note-form__text {
+  color: var(--color-text);
+}
+
+/* Parchment: warm gradient */
+.note-form--parchment {
+  background: linear-gradient(135deg, #f5efdc 0%, #e8dcc1 60%, #dac8a2 100%);
+  border-color: rgba(112, 82, 41, 0.3);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 20px rgba(112, 82, 41, 0.1);
+}
+.note-form--parchment .note-form__text {
+  color: #4a3a1e;
+}
+
+/* Fortune cookie: narrow strip, italic */
+.note-form--fortune_cookie {
+  background: #fef3c7;
+  border-color: #e5d5a5;
+  box-shadow: var(--shadow-card);
+}
+.note-form--fortune_cookie .note-form__text {
+  font-family: "Nunito", sans-serif;
+  font-style: italic;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: left;
+  color: #6b4423;
+}
+.note-form--fortune_cookie .note-form__text::placeholder {
+  font-family: "Nunito", sans-serif;
+  font-style: italic;
+}
+
+/* ==========================================================================
+   Sealed Stack — folded-note placeholders shown during sealed pulls
+   ========================================================================== */
+
+.sealed-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.sealed-stack__cards {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.sealed-card {
+  animation: fadeInUp var(--transition-slow) ease-out both;
+  animation-delay: calc(var(--i) * 80ms);
+  transform-origin: center bottom;
+}
+
+.sealed-card:nth-child(odd) {
+  transform: rotate(-3deg);
+}
+.sealed-card:nth-child(even) {
+  transform: rotate(2deg);
+}
+.sealed-card:nth-child(3n) {
+  transform: rotate(-1deg) translateY(-2px);
+}
+
+.sealed-card__svg {
+  width: 56px;
+  height: 64px;
+  filter: drop-shadow(0 3px 6px rgba(45, 45, 45, 0.18));
+}
+
+.sealed-stack__label {
+  font-family: "Caveat", cursive;
+  font-size: 1.1rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.sealed-stack__label strong {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
 /* ==========================================================================
    Pulled Notes (Sticky note / post-it style)
    ========================================================================== */
@@ -948,24 +1211,18 @@ textarea:focus-visible {
   animation: fadeInUp var(--transition-slow) ease-out both;
 }
 
-/* Color tinting: alternate between warm cream, pale yellow, pale pink */
+/* Default (sticky) look: warm cream square with a playful rotation. */
 .pulled-note {
   background: #fff8ee;
   transform: rotate(-1.5deg);
 }
 
-.pulled-note:nth-child(3n + 2) {
-  background: #fffde6;
-  transform: rotate(1deg);
-}
-
-.pulled-note:nth-child(3n + 3) {
-  background: #fff0ee;
-  transform: rotate(-0.5deg);
-}
-
+/* Light alternation stays so consecutive notes of the same style vary slightly. */
 .pulled-note:nth-child(even) {
   transform: rotate(1.5deg);
+}
+.pulled-note:nth-child(3n + 3) {
+  transform: rotate(-0.5deg);
 }
 
 .pulled-note__text {
@@ -976,6 +1233,86 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
   max-height: 8em;
   overflow-y: auto;
+}
+
+/* --- Style variants --- */
+
+/* Sticky: default yellow post-it. Covered by the base rule above, kept
+   explicit so the picker's selection is definitely applied. */
+.pulled-note--sticky {
+  background: #fef9c3;
+}
+
+/* Index card: ruled white card with a red margin line on the left. */
+.pulled-note--index_card {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(to right, transparent 22px, #f8a2a2 22px, #f8a2a2 23px, transparent 23px),
+    repeating-linear-gradient(transparent, transparent 26px, #dbe7f3 26px, #dbe7f3 27px);
+  border-radius: 4px;
+  box-shadow:
+    var(--shadow-hard),
+    inset 0 0 0 1px #e6e9ef;
+  padding-left: 2rem;
+}
+
+/* Napkin: soft pink with a subtle diamond texture. */
+.pulled-note--napkin {
+  background-color: #fee2e2;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(212, 72, 59, 0.06) 0,
+    rgba(212, 72, 59, 0.06) 2px,
+    transparent 2px,
+    transparent 14px
+  );
+  border-radius: var(--radius-md);
+  /* torn-edge: clip bottom with slight curve */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), 96% 100%, 4% calc(100% - 6px), 0 100%);
+}
+
+/* Parchment: warm gradient with rough edge. */
+.pulled-note--parchment {
+  background: linear-gradient(135deg, #f5efdc 0%, #e8dcc1 60%, #dac8a2 100%);
+  border-radius: 2px;
+  box-shadow:
+    var(--shadow-hard),
+    inset 0 0 20px rgba(112, 82, 41, 0.15);
+  border-top: 1px solid rgba(112, 82, 41, 0.18);
+  border-bottom: 1px solid rgba(112, 82, 41, 0.18);
+  font-family: "Caveat", cursive;
+}
+.pulled-note--parchment .pulled-note__text {
+  color: #4a3a1e;
+}
+
+/* Fortune cookie: tiny italic printed strip on off-white. */
+.pulled-note--fortune_cookie {
+  background: #fef3c7;
+  font-family: "Nunito", sans-serif;
+  font-style: italic;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 0.75rem 1.25rem;
+  border-radius: 2px;
+  box-shadow:
+    var(--shadow-hard),
+    inset 0 0 0 1px #e5d5a5;
+  transform: rotate(-0.5deg);
+}
+.pulled-note--fortune_cookie .pulled-note__text {
+  font-family: "Nunito", sans-serif;
+  font-style: italic;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: center;
+  color: #6b4423;
+}
+.pulled-note--fortune_cookie .pulled-note__text::before {
+  content: "“ ";
+}
+.pulled-note--fortune_cookie .pulled-note__text::after {
+  content: " ”";
 }
 
 .pulled-note__url {
@@ -1020,6 +1357,7 @@ textarea:focus-visible {
 
 .pulled-note__actions button:hover {
   background: var(--color-surface);
+  border-color: var(--color-primary);
 }
 
 .pulled-note__actions button:active {
@@ -1032,59 +1370,55 @@ textarea:focus-visible {
 
 .draggable-pulled-note {
   user-select: none;
+  position: relative;
+  z-index: 1;
+}
+
+.draggable-pulled-note--dragging {
+  z-index: 100;
+}
+
+.draggable-pulled-note--peer-dragging {
+  z-index: 50;
+  /* box-shadow instead of filter: drop-shadow — the note is a rectangular
+     card, so the visual result is nearly identical but the compositor can
+     reuse the layer across peer-drag transform updates (15 Hz) rather than
+     re-rasterizing the shadow on every frame. */
+  box-shadow: 0 8px 18px rgba(198, 123, 92, 0.4);
 }
 
 /* ==========================================================================
    Discard Bin
    ========================================================================== */
 
+/* Viewport-pinned trash can. No circular frame — just the silhouette. */
 .discard-bin {
-  position: absolute;
-  bottom: 1rem;
+  position: fixed;
+  bottom: 1.5rem;
   right: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 1rem 1.5rem;
-  width: 72px;
-  height: 72px;
-  border: 2px dashed var(--color-border);
-  border-radius: 50%;
-  justify-content: center;
-  opacity: 0.5;
-  transition: all var(--transition-normal);
+  width: 68px;
+  height: 80px;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  transition:
+    color var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
   z-index: 10;
-  background: transparent;
+  pointer-events: none;
 }
 
 .discard-bin--highlighted {
+  color: var(--color-error);
   opacity: 1;
-  border-color: var(--color-error);
-  background: rgba(212, 72, 59, 0.08);
-  transform: scale(1.1);
+  transform: scale(1.15);
 }
 
 .discard-bin__icon {
-  width: 24px;
-  height: 24px;
-  color: var(--color-text-muted);
-  transition: color var(--transition-fast);
-}
-
-.discard-bin--highlighted .discard-bin__icon {
-  color: var(--color-error);
-}
-
-.discard-bin__label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  transition: color var(--transition-fast);
-}
-
-.discard-bin--highlighted .discard-bin__label {
-  color: var(--color-error);
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(45, 45, 45, 0.15));
 }
 
 /* ==========================================================================
@@ -1102,23 +1436,104 @@ textarea:focus-visible {
    ========================================================================== */
 
 .sound-toggle {
-  font-size: 1.25rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.375rem;
-  line-height: 1;
-  border-radius: var(--radius-sm);
-  transition: opacity var(--transition-fast);
-  min-width: 36px;
-  min-height: 36px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .sound-toggle:hover {
-  opacity: 0.7;
+  background: var(--color-cream);
+  color: var(--color-primary-hover);
+}
+
+.sound-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sound-toggle[aria-pressed="true"] {
+  color: var(--color-error);
+}
+
+/* ==========================================================================
+   Install Prompt
+   ========================================================================== */
+
+.install-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-lifted);
+  z-index: 300;
+  max-width: calc(100vw - 2rem);
+  animation: fadeInUp var(--transition-slow) ease-out;
+}
+
+.install-prompt__text {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.install-prompt__actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.install-prompt__btn {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.375rem 0.875rem;
+  min-height: 32px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-hover);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.install-prompt__btn:hover {
+  background: #7a3e0f;
+}
+
+.install-prompt__btn--secondary {
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.install-prompt__btn--secondary:hover {
+  background: var(--color-cream);
+  color: var(--color-text);
+}
+
+@media (max-width: 640px) {
+  .install-prompt {
+    flex-direction: column;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+  }
 }
 
 /* ==========================================================================
@@ -1126,18 +1541,13 @@ textarea:focus-visible {
    ========================================================================== */
 
 .connection-status {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
   padding: 0.75rem;
   background: #fff3e0;
   border-bottom: 2px solid #ff9800;
   text-align: center;
   font-weight: 600;
   font-size: 0.875rem;
-  color: #e65100;
+  color: #a03c00;
 }
 
 /* ==========================================================================
@@ -1155,9 +1565,20 @@ textarea:focus-visible {
   }
 
   .room-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .room-header .room-jar-name {
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .room-actions--collapsed {
+    margin-left: auto;
   }
 
   .room-scene {
@@ -1165,9 +1586,12 @@ textarea:focus-visible {
     gap: 16px;
   }
 
-  .jar__body {
-    width: 150px;
+  .jar__svg-wrap {
+    width: 160px;
     height: 190px;
+  }
+  .jar__count {
+    font-size: 2.4rem;
   }
 
   .pulled-notes {
@@ -1183,14 +1607,747 @@ textarea:focus-visible {
   }
 
   .discard-bin {
-    width: 60px;
-    height: 60px;
-    bottom: 0.75rem;
-    right: 0.75rem;
+    width: 54px;
+    height: 64px;
+    bottom: 1rem;
+    right: 1rem;
   }
 
   /* Disable drag on mobile -- touch is used for scrolling */
   .draggable-pulled-note {
     touch-action: auto;
   }
+}
+
+/* ==========================================================================
+   Note Style Picker (tiles above NoteForm)
+   ========================================================================== */
+
+.note-style-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.5rem 0;
+}
+
+.note-style-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 72px;
+  height: 84px;
+  padding: 0.5rem;
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.note-style-tile:hover {
+  border-color: var(--color-primary);
+}
+
+.note-style-tile:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.note-style-tile--selected {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.note-style-tile__sample {
+  font-family: "Caveat", cursive;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--color-text);
+}
+
+.note-style-tile__label {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.note-style-tile--sticky {
+  background: #fef9c3;
+}
+.note-style-tile--index_card {
+  background: repeating-linear-gradient(
+    #fff,
+    #fff 10px,
+    var(--color-border) 10px,
+    var(--color-border) 11px
+  );
+}
+.note-style-tile--napkin {
+  background: #fee2e2;
+}
+.note-style-tile--parchment {
+  background: linear-gradient(135deg, #f5f0e1, #e8dcc1);
+}
+.note-style-tile--fortune_cookie {
+  background: #fef3c7;
+  font-style: italic;
+}
+
+/* ==========================================================================
+   Jar Settings Drawer
+   ========================================================================== */
+
+.jar-settings-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 45, 45, 0.45);
+  z-index: 900;
+  animation: jar-scrim-in 200ms ease-out;
+}
+
+@keyframes jar-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.jar-settings-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 400px;
+  max-width: 100vw;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lifted);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: jar-drawer-in 250ms ease-out;
+}
+
+@keyframes jar-drawer-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.jar-settings-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.jar-settings-drawer__title {
+  font-family: "Caveat", cursive;
+  font-size: 1.75rem;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.jar-settings-drawer__close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition: background var(--transition-fast);
+}
+.jar-settings-drawer__close:hover {
+  background: var(--color-cream);
+  color: var(--color-text);
+}
+
+/* 8px rhythm throughout: section padding 24px, field gap 16px, label→input 8px. */
+.jar-settings-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 32px;
+}
+
+.jar-settings-section {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.jar-settings-section:first-child {
+  padding-top: 8px;
+}
+.jar-settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 8px;
+}
+
+.jar-settings-section__title {
+  font-family: "Caveat", cursive;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0;
+  line-height: 1;
+}
+
+.jar-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.jar-settings-field__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.jar-settings-field__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.jar-settings-field input[type="text"],
+.jar-settings-field input[type="url"] {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.9375rem;
+  padding: 10px 12px;
+  min-height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color var(--transition-fast);
+}
+.jar-settings-field input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.jar-settings-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.jar-settings-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.jar-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.jar-settings-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.jar-settings-preview {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.jar-settings-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.jar-settings-preview__placeholder {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.jar-settings-upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.jar-settings-sound-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.jar-settings-sound-hint {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0.25rem 0 0;
+}
+
+/* Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  gap: 0;
+  background: var(--color-cream);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  width: fit-content;
+}
+.segmented-control__option {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.85rem;
+  padding: 0.375rem 0.875rem;
+  min-height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.segmented-control__option:hover:not(.segmented-control__option--selected) {
+  color: var(--color-text);
+}
+.segmented-control__option--selected {
+  background: var(--color-surface);
+  color: var(--color-primary-hover);
+  box-shadow: var(--shadow-card);
+  font-weight: 600;
+}
+.segmented-control__option:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Image Upload */
+.image-upload {
+  width: 100%;
+  min-height: 96px;
+  position: relative;
+}
+.jar-settings-sound-slot > .image-upload {
+  height: 72px;
+}
+.image-upload__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 96px;
+  padding: 0.75rem;
+  border: 2px dashed var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.image-upload__drop:hover,
+.image-upload--drag-over .image-upload__drop {
+  border-color: var(--color-primary);
+  border-style: solid;
+  background: var(--color-cream);
+  color: var(--color-primary-hover);
+}
+.image-upload__icon {
+  width: 20px;
+  height: 20px;
+}
+.image-upload__label {
+  font-size: 0.75rem;
+  text-align: center;
+}
+.image-upload__status {
+  font-size: 0.8rem;
+}
+.image-upload--uploaded {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.image-upload__thumb {
+  width: 100%;
+  max-height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.image-upload__actions {
+  display: flex;
+  gap: 0.25rem;
+}
+.image-upload__btn {
+  flex: 1;
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.image-upload__btn:hover {
+  background: var(--color-cream);
+}
+.image-upload__btn--danger {
+  color: var(--color-error);
+}
+.image-upload__error {
+  font-size: 0.75rem;
+  color: var(--color-error);
+  margin: 0.25rem 0 0;
+}
+.image-upload--error .image-upload__drop {
+  border-color: var(--color-error);
+}
+
+/* Bulk Import */
+.bulk-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.bulk-import__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bulk-import__textarea {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  resize: vertical;
+}
+.bulk-import__textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+.bulk-import__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.bulk-import__count {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.bulk-import__count--over {
+  color: var(--color-error);
+}
+.bulk-import__submit {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  min-height: 36px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.bulk-import__submit:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+.bulk-import__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.bulk-import__feedback {
+  font-size: 0.85rem;
+  color: var(--color-success);
+  margin: 0.25rem 0 0;
+}
+
+/* Room header gear button. The .room-actions button rule earlier in the file
+   has higher type+class specificity than a single class, so we scope this one
+   with .room-actions to win and override the 16px horizontal padding that
+   otherwise squashes the SVG down to 2px wide. */
+.room-actions .room-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.room-actions .room-settings-btn:hover {
+  background: var(--color-cream);
+  color: var(--color-primary-hover);
+}
+.room-actions .room-settings-btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .jar-settings-drawer {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jar-settings-scrim,
+  .jar-settings-drawer {
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   Top Bar
+   ========================================================================== */
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1.5rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.top-bar__brand {
+  font-family: "Caveat", cursive;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.top-bar__user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.top-bar__avatar {
+  border-radius: 50%;
+}
+
+.top-bar__name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.top-bar__button {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.top-bar__button:hover {
+  background: var(--color-cream);
+  color: var(--color-text);
+}
+
+/* ==========================================================================
+   My Jars Drawer
+   ========================================================================== */
+
+.my-jars-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.my-jars-drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45, 45, 45, 0.3);
+}
+
+.my-jars-drawer__panel {
+  position: relative;
+  width: min(420px, 100%);
+  height: 100%;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lifted);
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.my-jars-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.my-jars-drawer__header h2 {
+  font-family: "Caveat", cursive;
+  font-size: 1.75rem;
+  color: var(--color-primary);
+}
+
+.my-jars-drawer__close {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.my-jars-drawer__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.my-jars-drawer__jar {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--color-bg);
+}
+
+.my-jars-drawer__jar-name {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.my-jars-drawer__rooms {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.my-jars-drawer__room {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.my-jars-drawer__code {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-primary);
+  letter-spacing: 0.12em;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+}
+
+.my-jars-drawer__state {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.my-jars-drawer__action {
+  margin-left: auto;
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.my-jars-drawer__action:hover {
+  background: var(--color-primary-hover);
+}
+
+.my-jars-drawer__empty,
+.my-jars-drawer__loading,
+.my-jars-drawer__error {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.my-jars-drawer__error {
+  color: var(--color-error);
+}
+
+/* ==========================================================================
+   Room jar name
+   ========================================================================== */
+
+.room-jar-name {
+  font-family: "Caveat", cursive;
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--color-text);
 }

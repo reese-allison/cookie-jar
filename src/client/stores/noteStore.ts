@@ -1,6 +1,12 @@
 import type { JarAppearance, JarConfig, Note, PullHistoryEntry } from "@shared/types";
 import { create } from "zustand";
 
+export interface PeerDrag {
+  draggerId: string;
+  mx: number;
+  my: number;
+}
+
 interface NoteStore {
   inJarCount: number;
   pulledNotes: Note[];
@@ -12,6 +18,9 @@ interface NoteStore {
   sealedRevealAt: number;
   isAdding: boolean;
   isPulling: boolean;
+  // noteId -> peer drag state. A note here is being dragged by someone else;
+  // the current client should mirror the transform and disable its own drag.
+  peerDrags: Map<string, PeerDrag>;
 
   // Actions
   setNoteState: (
@@ -30,6 +39,9 @@ interface NoteStore {
   setHistory: (entries: PullHistoryEntry[]) => void;
   setAdding: (adding: boolean) => void;
   setPulling: (pulling: boolean) => void;
+  setPeerDrag: (noteId: string, drag: PeerDrag) => void;
+  clearPeerDrag: (noteId: string) => void;
+  clearPeerDragsByUser: (draggerId: string) => void;
   reset: () => void;
 }
 
@@ -44,6 +56,7 @@ const initialState = {
   sealedRevealAt: 0,
   isAdding: false,
   isPulling: false,
+  peerDrags: new Map<string, PeerDrag>(),
 };
 
 export const useNoteStore = create<NoteStore>((set) => ({
@@ -91,5 +104,30 @@ export const useNoteStore = create<NoteStore>((set) => ({
   setHistory: (history) => set({ history }),
   setAdding: (isAdding) => set({ isAdding }),
   setPulling: (isPulling) => set({ isPulling }),
-  reset: () => set(initialState),
+  setPeerDrag: (noteId, drag) =>
+    set((state) => {
+      const peerDrags = new Map(state.peerDrags);
+      peerDrags.set(noteId, drag);
+      return { peerDrags };
+    }),
+  clearPeerDrag: (noteId) =>
+    set((state) => {
+      if (!state.peerDrags.has(noteId)) return state;
+      const peerDrags = new Map(state.peerDrags);
+      peerDrags.delete(noteId);
+      return { peerDrags };
+    }),
+  clearPeerDragsByUser: (draggerId) =>
+    set((state) => {
+      const peerDrags = new Map(state.peerDrags);
+      let changed = false;
+      for (const [noteId, drag] of peerDrags) {
+        if (drag.draggerId === draggerId) {
+          peerDrags.delete(noteId);
+          changed = true;
+        }
+      }
+      return changed ? { peerDrags } : state;
+    }),
+  reset: () => set({ ...initialState, peerDrags: new Map() }),
 }));

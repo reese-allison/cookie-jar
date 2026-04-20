@@ -226,6 +226,22 @@ describe("room lock/unlock", () => {
   });
 });
 
+describe("jar:refresh", () => {
+  it("rejects jar:refresh from anonymous user (not owner)", async () => {
+    const alice = connectClient(testRoomCode, "Alice");
+    clients.push(alice);
+
+    alice.connect();
+    await waitForEvent(alice, "room:state");
+
+    const errorPromise = waitForEvent(alice, "room:error");
+    alice.emit("jar:refresh");
+
+    const [error] = await errorPromise;
+    expect(error).toContain("owner");
+  });
+});
+
 describe("room errors", () => {
   it("emits error when joining a non-existent room", async () => {
     const client = ioClient(`http://localhost:${port}`, {
