@@ -7,6 +7,7 @@ import pool from "../db/pool";
 import { logger } from "../logger";
 import { type SocketAuthData, socketAuthMiddleware } from "./authMiddleware";
 import { createCacheBus } from "./cacheBus";
+import { createConnectionLimiter } from "./connectionLimit";
 import { createSocketContext } from "./context";
 import { createDedupStore } from "./dedupStore";
 import type { SocketDeps } from "./deps";
@@ -107,6 +108,12 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     else if (scope === "jar") roomStateCache.invalidateJar(id);
   });
 
+  // Per-IP connection cap — runs before auth so a flood can't even reach the
+  // session lookup. Configurable via SOCKET_IP_CONN_LIMIT.
+  const connLimit = Number.parseInt(process.env.SOCKET_IP_CONN_LIMIT ?? "", 10) || 50;
+  const connectionLimiter = createConnectionLimiter(connLimit);
+  io.use((socket, next) => connectionLimiter.middleware(socket, next));
+
   // Auth middleware — verifies session cookie on handshake
   io.use(socketAuthMiddleware);
 
@@ -115,6 +122,7 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     const ctx = createSocketContext(authData);
     registerRoomHandlers(io, socket, ctx, deps, idleTimeouts);
     registerNoteHandlers(io, socket, ctx, deps);
+    socket.on("disconnect", () => connectionLimiter.release(socket));
   });
 
   // Periodic check for expired sessions on long-lived sockets.

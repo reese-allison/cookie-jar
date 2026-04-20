@@ -14,6 +14,10 @@ export function useSocket() {
   // Shared throttle helper — tested in tests/shared/throttle.test.ts.
   const cursorThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
   const dragThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
+  // Remembers the last successful join args so we can auto-rejoin after a
+  // transparent reconnect — the server assigns a fresh socket id on reconnect
+  // and has no memory of our presence, so the client has to re-emit room:join.
+  const lastJoinRef = useRef<{ code: string; displayName: string } | null>(null);
 
   // Narrow selectors throughout — Zustand setters have stable identity, so
   // pulling each one individually avoids the re-render storm that a
@@ -58,6 +62,12 @@ export function useSocket() {
       setConnected(true);
       setMyId(socket.id ?? null);
       setError(null);
+      // Transparent reconnect: if we had an active membership, re-emit
+      // room:join. The server assigned us a new socket id and has no presence
+      // entry yet. If the room was closed/full in the meantime the server
+      // emits room:error and the normal error UI kicks in.
+      const last = lastJoinRef.current;
+      if (last) socket.emit("room:join", last.code, last.displayName);
     });
     socket.on("disconnect", () => {
       setConnected(false);
@@ -70,12 +80,18 @@ export function useSocket() {
       setError(error);
       setAdding(false);
       setPulling(false);
+      // A room:error after reconnect means the room is gone (closed, full,
+      // etc.). Clear the auto-rejoin memo so we don't spin on the next
+      // reconnect. The normal join flow will repopulate lastJoinRef if the
+      // user tries again.
+      lastJoinRef.current = null;
     });
     socket.on("auth:expired", () => {
       // Server is about to disconnect us — surface a specific message so the
       // UI can point the user at sign-in rather than showing a generic
       // "disconnected" banner.
       setError("Your session expired. Please sign in again.");
+      lastJoinRef.current = null;
     });
     socket.on("rate_limited", (event, retryInMs) => {
       setError(`You're doing that too fast (${event}). Try again in ${retryInMs}ms.`);
@@ -175,6 +191,10 @@ export function useSocket() {
       if (!socket) return;
 
       setJoining(true);
+      // Stash for the reconnect handler. If the server rejects this join
+      // (room not found, full, closed), the matching room:error handler
+      // clears lastJoinRef so we don't spin re-joining a dead room.
+      lastJoinRef.current = { code, displayName };
       if (!socket.connected) {
         socket.connect();
       }
@@ -188,6 +208,7 @@ export function useSocket() {
     if (!socket) return;
     socket.emit("room:leave");
     socket.disconnect();
+    lastJoinRef.current = null;
     roomReset();
     noteReset();
   }, [roomReset, noteReset]);

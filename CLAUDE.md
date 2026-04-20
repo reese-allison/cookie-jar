@@ -170,3 +170,4 @@ Runtime config is read from `.env` (dev) or the platform's env (prod). Non-obvio
 | `STORAGE_BACKEND` | `local` | `local` or `s3` (covers R2) |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL_BASE` | — | Required when `STORAGE_BACKEND=s3`; for R2 set `S3_REGION=auto` and `S3_ENDPOINT=https://{acct}.r2.cloudflarestorage.com` |
 | `ALLOW_DESTRUCTIVE_MIGRATION` | — | Set to `1` to bypass `db:migrate:check` refusing destructive SQL |
+| `SOCKET_IP_CONN_LIMIT` | `50` | Max concurrent socket connections per IP per pod — handshake DoS backstop |
