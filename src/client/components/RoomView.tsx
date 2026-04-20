@@ -7,7 +7,7 @@ import type {
   PullHistoryEntry,
   Room,
 } from "@shared/types";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -116,10 +116,22 @@ export function RoomView({
     [updateRects],
   );
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    onMouseMove(e.clientX - rect.left, e.clientY - rect.top);
-  };
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMouseMove(e.clientX - rect.left, e.clientY - rect.top);
+    },
+    [onMouseMove],
+  );
+
+  // Build a members-by-id lookup once per members change. Without this, every
+  // cursor packet would trigger N × M `.find` calls (N peers × M members) as
+  // the cursors Map updates re-render this component.
+  const memberById = useMemo(() => {
+    const map = new Map<string, (typeof room.members)[number]>();
+    for (const m of room.members) map.set(m.id, m);
+    return map;
+  }, [room.members]);
 
   const isLocked = room.state === "locked";
   // Locked means "read-mostly" — contributors can still pull/return, but
@@ -251,7 +263,7 @@ export function RoomView({
         {/* Remote cursors — hidden on touch devices where users have no pointer */}
         {!isTouch &&
           [...cursors.entries()].map(([userId, cursor]) => {
-            const member = room.members.find((m) => m.id === userId);
+            const member = memberById.get(userId);
             if (!member) return null;
             return (
               <Cursor

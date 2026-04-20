@@ -43,7 +43,10 @@ export function registerRoomHandlers(
         socket.emit("room:error", "Display name must be 1-30 characters");
         return;
       }
-      const dbRoom = await roomQueries.getRoomByCode(pool, code);
+      // Room codes are stored uppercase. Normalize here too so the socket
+      // path matches the REST path — clients typing lowercase should still
+      // find the room.
+      const dbRoom = await roomQueries.getRoomByCode(pool, code.toUpperCase());
       const joinError = validateRoomJoin(dbRoom);
       if (joinError || !dbRoom) {
         socket.emit("room:error", joinError ?? "Room not found");
@@ -114,6 +117,10 @@ export function registerRoomHandlers(
 
   socket.on("cursor:move", (position) => {
     if (!ctx.roomId) return;
+    // Silent drop — cursor packets are volatile, and cursoring through the
+    // "rate_limited" UX for a best-effort stream would be noisy. The budget
+    // is set so a human client never hits it.
+    if (!socketRateLimiter.allow(socket.id, "cursor:move")) return;
     idleTimeouts?.resetActivity(ctx.roomId);
     socket.volatile.to(ctx.roomId).emit("cursor:moved", {
       ...position,

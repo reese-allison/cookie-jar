@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 export interface DedupStore {
   /**
@@ -16,6 +16,7 @@ export interface DedupStore {
 }
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h — longest reasonable session
+const COMMAND_NAME = "cookieJarDedupRelease";
 
 function key(roomId: string, userId: string): string {
   return `room:${roomId}:user:${userId}`;
@@ -31,10 +32,27 @@ end
 return 0
 `;
 
+// Module-level flag so we only call defineCommand once per process — calling
+// it a second time throws.
+const registered = new WeakSet<Redis>();
+
+function ensureRegistered(redis: Redis): void {
+  if (registered.has(redis)) return;
+  redis.defineCommand(COMMAND_NAME, { numberOfKeys: 1, lua: COMPARE_AND_DELETE_LUA });
+  registered.add(redis);
+}
+
+type WithDedupCommand = Redis & {
+  [COMMAND_NAME](key: string, socketId: string): Promise<number>;
+};
+
 export function createDedupStore(
   redis: Redis,
   ttlSeconds: number = DEFAULT_TTL_SECONDS,
 ): DedupStore {
+  ensureRegistered(redis);
+  const client = redis as WithDedupCommand;
+
   return {
     async claim(roomId, userId, newSocketId) {
       // SET ... GET returns the old value, then sets the new. Atomic in Redis.
@@ -52,7 +70,7 @@ export function createDedupStore(
     },
 
     async release(roomId, userId, socketId) {
-      await redis.eval(COMPARE_AND_DELETE_LUA, 1, key(roomId, userId), socketId);
+      await client[COMMAND_NAME](key(roomId, userId), socketId);
     },
   };
 }

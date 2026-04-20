@@ -68,12 +68,18 @@ app.use(
   }),
 );
 
-// Rate-limited mutation + upload routes. Uploads get a tighter budget since
-// each call hits disk and can carry several megabytes.
+// Per-method rate limiting: reads get the generous budget (300/min), writes
+// the stricter one (60/min), uploads a tighter 10/min. Applying a single
+// limiter at the mount prefix would count `GET /api/rooms/:code` (a join
+// lookup) against the write quota.
 const limiters = buildDefaultLimiters(sharedRedis);
-app.use("/api/jars", limiters.write, jarRouter);
-app.use("/api/notes", limiters.write, noteRouter);
-app.use("/api/rooms", limiters.write, roomRouter);
+const readOrWrite = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const handler = req.method === "GET" || req.method === "HEAD" ? limiters.read : limiters.write;
+  handler(req, res, next);
+};
+app.use("/api/jars", readOrWrite, jarRouter);
+app.use("/api/notes", readOrWrite, noteRouter);
+app.use("/api/rooms", readOrWrite, roomRouter);
 const uploadStorage = buildStorageFromEnv();
 app.use("/api/uploads", limiters.upload, createUploadRouter(uploadStorage));
 

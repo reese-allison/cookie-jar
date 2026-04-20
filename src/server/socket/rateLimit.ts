@@ -20,6 +20,12 @@ const CONFIGS: Record<string, BucketConfig> = {
   "note:return": { ratePerSec: 2, burst: 4 },
   "history:get": { ratePerSec: 0.2, burst: 1 }, // 1 per 5 s
   "jar:refresh": { ratePerSec: 1 / 3, burst: 1 }, // 1 per 3 s
+  // High-frequency ephemeral events. Client throttles to 15 Hz; the server
+  // budget is ~double that so honest clients never hit it and a malicious
+  // client can't amplify fan-out beyond what a real user would trigger.
+  "cursor:move": { ratePerSec: 30, burst: 40 },
+  "note:drag": { ratePerSec: 30, burst: 40 },
+  "note:drag_end": { ratePerSec: 10, burst: 10 },
 };
 
 export interface SocketRateLimiter {

@@ -1,5 +1,5 @@
 import type { Note } from "@shared/types";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 export interface SealedNotesStore {
   /** Append a note to the room's sealed buffer. Returns the new buffer length. */
@@ -21,6 +21,7 @@ export interface SealedNotesStore {
 const KEY_PREFIX = "room:";
 const KEY_SUFFIX = ":sealed";
 const DEFAULT_TTL_SECONDS = 60 * 60 * 6; // 6 hours
+const COMMAND_NAME = "cookieJarSealedReveal";
 
 function key(roomId: string): string {
   return `${KEY_PREFIX}${roomId}${KEY_SUFFIX}`;
@@ -41,10 +42,25 @@ end
 return {}
 `;
 
+const registered = new WeakSet<Redis>();
+
+function ensureRegistered(redis: Redis): void {
+  if (registered.has(redis)) return;
+  redis.defineCommand(COMMAND_NAME, { numberOfKeys: 1, lua: REVEAL_IF_READY_LUA });
+  registered.add(redis);
+}
+
+type WithRevealCommand = Redis & {
+  [COMMAND_NAME](key: string, threshold: string): Promise<string[]>;
+};
+
 export function createSealedNotesStore(
   redis: Redis,
   ttlSeconds: number = DEFAULT_TTL_SECONDS,
 ): SealedNotesStore {
+  ensureRegistered(redis);
+  const client = redis as WithRevealCommand;
+
   return {
     async push(roomId, note) {
       const k = key(roomId);
@@ -55,12 +71,7 @@ export function createSealedNotesStore(
     },
 
     async revealIfReady(roomId, threshold) {
-      const raw = (await redis.eval(
-        REVEAL_IF_READY_LUA,
-        1,
-        key(roomId),
-        String(threshold),
-      )) as string[];
+      const raw = await client[COMMAND_NAME](key(roomId), String(threshold));
       return raw.map((s) => JSON.parse(s) as Note);
     },
 

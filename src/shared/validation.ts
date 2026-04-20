@@ -1,4 +1,4 @@
-import { NOTE_STYLES, ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "./constants";
+import { MAX_NOTE_URL_LENGTH, NOTE_STYLES, ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "./constants";
 import type { NoteStyle } from "./types";
 
 export function isValidRoomCode(code: string): boolean {
@@ -12,6 +12,10 @@ export function isValidNoteText(text: string): boolean {
 }
 
 export function isValidUrl(url: string): boolean {
+  // Match the DB CHECK on notes.url so invalid input fails at the API, not
+  // the database. MAX_NOTE_URL_LENGTH is generous — OAuth return URLs and
+  // pre-signed S3 URLs routinely run ~1 KB.
+  if (url.length > MAX_NOTE_URL_LENGTH) return false;
   try {
     const parsed = new URL(url);
     return parsed.protocol === "http:" || parsed.protocol === "https:";

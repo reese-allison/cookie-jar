@@ -1,5 +1,5 @@
 import type { RoomMember } from "@shared/types";
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
 
 export type AddMemberResult = { ok: true; members: RoomMember[] } | { ok: false; reason: "full" };
 
@@ -32,6 +32,7 @@ export interface PresenceStore {
 }
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
+const COMMAND_NAME = "cookieJarAddIfUnderCap";
 
 function key(roomId: string): string {
   return `room:${roomId}:members`;
@@ -74,6 +75,26 @@ redis.call('EXPIRE', KEYS[1], ARGV[6])
 return 1
 `;
 
+const registered = new WeakSet<Redis>();
+
+function ensureRegistered(redis: Redis): void {
+  if (registered.has(redis)) return;
+  redis.defineCommand(COMMAND_NAME, { numberOfKeys: 1, lua: ADD_IF_UNDER_CAP_LUA });
+  registered.add(redis);
+}
+
+type WithAddCommand = Redis & {
+  [COMMAND_NAME](
+    key: string,
+    role: string,
+    maxParticipants: string,
+    maxViewers: string,
+    memberId: string,
+    memberJson: string,
+    ttlSeconds: string,
+  ): Promise<number>;
+};
+
 /**
  * Redis-hash-backed presence. Source of truth is shared across pods, so
  * `room:state` renders identically regardless of which pod handles the join.
@@ -87,6 +108,9 @@ export function createPresenceStore(
   redis: Redis,
   ttlSeconds: number = DEFAULT_TTL_SECONDS,
 ): PresenceStore {
+  ensureRegistered(redis);
+  const client = redis as WithAddCommand;
+
   return {
     async addMember(roomId, member) {
       const k = key(roomId);
@@ -95,9 +119,7 @@ export function createPresenceStore(
     },
 
     async addMemberIfUnderCap(roomId, member, maxParticipants, maxViewers) {
-      const inserted = (await redis.eval(
-        ADD_IF_UNDER_CAP_LUA,
-        1,
+      const inserted = await client[COMMAND_NAME](
         key(roomId),
         member.role,
         String(maxParticipants),
@@ -105,7 +127,7 @@ export function createPresenceStore(
         member.id,
         JSON.stringify(member),
         String(ttlSeconds),
-      )) as number;
+      );
       if (inserted !== 1) return { ok: false, reason: "full" };
       // Fetch the updated roster so the caller can emit room:state without
       // a second round-trip.

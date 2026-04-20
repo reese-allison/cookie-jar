@@ -10,6 +10,7 @@ export const DEFAULT_LIMITS = {
 export const MAX_NOTES_PER_JAR = 1000;
 export const MAX_BULK_IMPORT = 500;
 export const MAX_NOTE_TEXT_LENGTH = 500;
+export const MAX_NOTE_URL_LENGTH = 2000;
 export const MAX_DISPLAY_NAME_LENGTH = 30;
 
 // Room settings

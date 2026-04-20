@@ -77,8 +77,8 @@ CREATE TABLE notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   text TEXT NOT NULL CHECK (char_length(text) <= 500),
-  url TEXT,
-  style TEXT NOT NULL DEFAULT 'sticky',
+  url TEXT CHECK (url IS NULL OR char_length(url) <= 2000),
+  style TEXT NOT NULL DEFAULT 'sticky' CHECK (style IN ('sticky', 'index_card', 'napkin', 'parchment', 'fortune_cookie')),
   state TEXT NOT NULL DEFAULT 'in_jar' CHECK (state IN ('in_jar', 'pulled', 'discarded')),
   author_id UUID REFERENCES users(id),
   pulled_by TEXT,
@@ -88,12 +88,13 @@ CREATE TABLE notes (
 
 CREATE INDEX idx_notes_jar_id ON notes(jar_id);
 CREATE INDEX idx_notes_jar_state ON notes(jar_id, state);
+CREATE INDEX idx_notes_jar_state_created ON notes(jar_id, state, created_at);
 CREATE INDEX idx_notes_author_id ON notes(author_id);
 
 -- Rooms (live sessions around a jar)
 CREATE TABLE rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code TEXT NOT NULL UNIQUE,
+  code TEXT NOT NULL UNIQUE CHECK (code ~ '^[A-HJ-NP-Z2-9]{6}$'),
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'locked', 'closed')),
   max_participants INT NOT NULL DEFAULT 20,

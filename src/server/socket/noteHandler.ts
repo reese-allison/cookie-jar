@@ -181,13 +181,16 @@ export function registerNoteHandlers(
   // Ephemeral drag position broadcasts. No DB state — just relayed to peers so
   // the group sees the note moving in real time. Volatile for move updates
   // (drop intermediate packets if client is slow) so buffering can't build up.
+  // Silent rate-drop: same reasoning as cursor:move — best-effort stream.
   socket.on("note:drag", (noteId: string, mx: number, my: number) => {
     if (!ctx.roomId) return;
+    if (!socketRateLimiter.allow(socket.id, "note:drag")) return;
     socket.volatile.to(ctx.roomId).emit("note:drag", noteId, socket.id, mx, my);
   });
 
   socket.on("note:drag_end", (noteId: string) => {
     if (!ctx.roomId) return;
+    if (!socketRateLimiter.allow(socket.id, "note:drag_end")) return;
     socket.to(ctx.roomId).emit("note:drag_end", noteId, socket.id);
   });
 

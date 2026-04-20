@@ -13,19 +13,22 @@ export interface OwnedJarWithRooms extends Jar {
   activeRooms: ActiveRoomSummary[];
 }
 
+// Appearance + config are stored as JSONB with DB-side defaults; PATCH and
+// POST callers may supply only the fields they mean to set. Partial<> keeps
+// the sanitizer output (which emits only validated keys) assignable here.
 interface CreateJarInput {
   ownerId: string;
   name: string;
-  appearance?: JarAppearance;
-  config?: JarConfig;
+  appearance?: Partial<JarAppearance>;
+  config?: Partial<JarConfig>;
   isTemplate?: boolean;
   isPublic?: boolean;
 }
 
 interface UpdateJarInput {
   name?: string;
-  appearance?: JarAppearance;
-  config?: JarConfig;
+  appearance?: Partial<JarAppearance>;
+  config?: Partial<JarConfig>;
   isPublic?: boolean;
 }
 

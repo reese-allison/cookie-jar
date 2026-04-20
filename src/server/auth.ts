@@ -38,6 +38,15 @@ export const auth = betterAuth({
     if (!secret && process.env.NODE_ENV === "production") {
       throw new Error("BETTER_AUTH_SECRET must be set in production");
     }
+    if (!secret && process.env.NODE_ENV !== "test") {
+      // Staging / dev-on-real-infra deploys forget NODE_ENV all the time. The
+      // fallback secret is public in this repo, so sessions signed with it are
+      // trivially forgeable. Make the warning loud enough to catch in logs.
+      logger.warn(
+        "BETTER_AUTH_SECRET unset — falling back to the well-known dev secret. " +
+          "Set BETTER_AUTH_SECRET before exposing this server.",
+      );
+    }
     return secret ?? "dev-only-secret-not-for-production";
   })(),
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",

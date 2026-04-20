@@ -26,16 +26,16 @@ function asString(v: unknown): string {
 function parseJarShape(
   body: { appearance?: unknown; config?: unknown },
   res: Response,
-): { appearance?: JarAppearance; config?: JarConfig } | null {
-  let appearance: JarAppearance | undefined;
-  let config: JarConfig | undefined;
+): { appearance?: Partial<JarAppearance>; config?: Partial<JarConfig> } | null {
+  let appearance: Partial<JarAppearance> | undefined;
+  let config: Partial<JarConfig> | undefined;
   if (body.appearance !== undefined) {
     const cleaned = sanitizeJarAppearance(body.appearance);
     if (!cleaned) {
       res.status(400).json({ error: "Invalid appearance payload" });
       return null;
     }
-    appearance = cleaned as unknown as JarAppearance;
+    appearance = cleaned as Partial<JarAppearance>;
   }
   if (body.config !== undefined) {
     const cleaned = sanitizeJarConfig(body.config);
@@ -43,10 +43,7 @@ function parseJarShape(
       res.status(400).json({ error: "Invalid config payload" });
       return null;
     }
-    // JarConfig has required-looking fields but is stored as a partial in
-    // JSONB — DB merges with defaults. The sanitizer only emits keys that
-    // were explicitly provided, so a cast through unknown is correct here.
-    config = cleaned as unknown as JarConfig;
+    config = cleaned as Partial<JarConfig>;
   }
   return { appearance, config };
 }
@@ -186,9 +183,20 @@ jarRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     }
     const shape = parseJarShape(req.body, res);
     if (!shape) return;
+    // Pre-merge soundPack at the app layer — the DB-level `||` does a shallow
+    // merge, so a PATCH with `{soundPack: {notePull: "x"}}` would otherwise
+    // wipe the jar's other sound URLs. Top-level appearance fields still
+    // merge shallowly via `||` in updateJar.
+    const mergedAppearance =
+      shape.appearance?.soundPack !== undefined
+        ? {
+            ...shape.appearance,
+            soundPack: { ...(jar.appearance?.soundPack ?? {}), ...shape.appearance.soundPack },
+          }
+        : shape.appearance;
     const updated = await jarQueries.updateJar(pool, jarId, {
       name: typeof name === "string" ? name.trim() : undefined,
-      appearance: shape.appearance,
+      appearance: mergedAppearance,
       config: shape.config,
     });
     res.json(updated);
