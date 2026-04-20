@@ -1,4 +1,5 @@
-import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "./constants";
+import { NOTE_STYLES, ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "./constants";
+import type { NoteStyle } from "./types";
 
 export function isValidRoomCode(code: string): boolean {
   if (code.length !== ROOM_CODE_LENGTH) return false;
@@ -32,6 +33,36 @@ export function generateRoomCode(): string {
 export function isValidDisplayName(name: string): boolean {
   const trimmed = name.trim();
   return trimmed.length > 0 && trimmed.length <= 30;
+}
+
+export type ParsedNoteInput = { text: string; url?: string; style: NoteStyle };
+export type NoteInputResult = { ok: true; note: ParsedNoteInput } | { ok: false; error: string };
+
+/**
+ * Single source of truth for `note:add` input validation. Both the REST POST
+ * /api/notes route and the socket `note:add` handler run user input through
+ * this so validation can't drift. Style defaults to "sticky" — it's purely
+ * a visual choice, not worth failing the whole request over.
+ */
+export function parseNoteInput(input: unknown): NoteInputResult {
+  if (typeof input !== "object" || input === null) {
+    return { ok: false, error: "Note payload must be an object" };
+  }
+  const obj = input as { text?: unknown; url?: unknown; style?: unknown };
+  if (typeof obj.text !== "string" || !isValidNoteText(obj.text)) {
+    return { ok: false, error: "Note text must be 1-500 characters" };
+  }
+  let url: string | undefined;
+  if (obj.url !== undefined && obj.url !== null && obj.url !== "") {
+    if (typeof obj.url !== "string" || !isValidUrl(obj.url)) {
+      return { ok: false, error: "Invalid URL" };
+    }
+    url = obj.url;
+  }
+  const style: NoteStyle = NOTE_STYLES.includes(obj.style as NoteStyle)
+    ? (obj.style as NoteStyle)
+    : "sticky";
+  return { ok: true, note: { text: obj.text.trim(), url, style } };
 }
 
 const APPEARANCE_URL_FIELDS = ["openedImageUrl", "closedImageUrl", "backgroundImageUrl"] as const;

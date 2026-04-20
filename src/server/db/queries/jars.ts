@@ -159,12 +159,15 @@ export async function updateJar(
     sets.push(`name = $${paramIndex++}`);
     values.push(input.name);
   }
+  // `||` is Postgres's JSONB concat — shallow merge. A PATCH with just
+  // { label: "x" } keeps the existing openedImageUrl / soundPack / etc.
+  // Clients that want to clear a field must send it explicitly as null or "".
   if (input.appearance !== undefined) {
-    sets.push(`appearance = $${paramIndex++}`);
+    sets.push(`appearance = appearance || $${paramIndex++}::jsonb`);
     values.push(JSON.stringify(input.appearance));
   }
   if (input.config !== undefined) {
-    sets.push(`config = $${paramIndex++}`);
+    sets.push(`config = config || $${paramIndex++}::jsonb`);
     values.push(JSON.stringify(input.config));
   }
   if (input.isPublic !== undefined) {

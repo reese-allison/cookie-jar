@@ -13,11 +13,22 @@ const MAX_PARTICIPANTS_CAP = 200;
 const MAX_VIEWERS_CAP = 500;
 const MAX_IDLE_TIMEOUT_MINUTES = 24 * 60;
 
-function coerceInt(v: unknown, min: number, max: number): number | undefined {
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "number" || !Number.isFinite(v) || !Number.isInteger(v)) return undefined;
-  if (v < min || v > max) return undefined;
-  return v;
+type BoundedField = "maxParticipants" | "maxViewers" | "idleTimeoutMinutes";
+
+function validateBounded(
+  field: BoundedField,
+  v: unknown,
+  min: number,
+  max: number,
+): { value: number | undefined; error: string | null } {
+  if (v === undefined || v === null) return { value: undefined, error: null };
+  if (typeof v !== "number" || !Number.isFinite(v) || !Number.isInteger(v)) {
+    return { value: undefined, error: `${field} must be an integer` };
+  }
+  if (v < min || v > max) {
+    return { value: undefined, error: `${field} must be between ${min} and ${max}` };
+  }
+  return { value: v, error: null };
 }
 
 // Create a room for a jar (requires auth + jar owner)
@@ -26,6 +37,16 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
     const { jarId, maxParticipants, maxViewers, idleTimeoutMinutes } = req.body;
     if (!jarId) {
       res.status(400).json({ error: "jarId is required" });
+      return;
+    }
+    const checks = [
+      validateBounded("maxParticipants", maxParticipants, 1, MAX_PARTICIPANTS_CAP),
+      validateBounded("maxViewers", maxViewers, 0, MAX_VIEWERS_CAP),
+      validateBounded("idleTimeoutMinutes", idleTimeoutMinutes, 1, MAX_IDLE_TIMEOUT_MINUTES),
+    ] as const;
+    const firstError = checks.find((c) => c.error)?.error;
+    if (firstError) {
+      res.status(400).json({ error: firstError });
       return;
     }
     const jar = await jarQueries.getJarById(pool, jarId);
@@ -37,14 +58,11 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       res.status(403).json({ error: "Only the jar owner can create rooms" });
       return;
     }
-    // Silently drop out-of-range values — the defaults in createRoom kick in.
-    // Rejecting would force clients to know the exact bounds; clamping keeps
-    // the API tolerant while still preventing abuse.
     const room = await roomQueries.createRoom(pool, {
       jarId,
-      maxParticipants: coerceInt(maxParticipants, 1, MAX_PARTICIPANTS_CAP),
-      maxViewers: coerceInt(maxViewers, 0, MAX_VIEWERS_CAP),
-      idleTimeoutMinutes: coerceInt(idleTimeoutMinutes, 1, MAX_IDLE_TIMEOUT_MINUTES),
+      maxParticipants: checks[0].value,
+      maxViewers: checks[1].value,
+      idleTimeoutMinutes: checks[2].value,
     });
     res.status(201).json(room);
   } catch (err) {

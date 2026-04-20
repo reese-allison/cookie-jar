@@ -5,6 +5,7 @@ import {
   isValidNoteText,
   isValidRoomCode,
   isValidUrl,
+  parseNoteInput,
   sanitizeJarAppearance,
   sanitizeJarConfig,
 } from "../../src/shared/validation";
@@ -173,5 +174,50 @@ describe("sanitizeJarConfig", () => {
 
   it("rejects non-boolean flags", () => {
     expect(sanitizeJarConfig({ showAuthors: "yes" })).toBeNull();
+  });
+});
+
+describe("parseNoteInput", () => {
+  it("accepts a minimal note", () => {
+    const r = parseNoteInput({ text: "hello" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.note).toEqual({ text: "hello", url: undefined, style: "sticky" });
+  });
+
+  it("trims whitespace from text", () => {
+    const r = parseNoteInput({ text: "  hi  " });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.note.text).toBe("hi");
+  });
+
+  it("keeps a valid http(s) url", () => {
+    const r = parseNoteInput({ text: "see this", url: "https://example.com" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.note.url).toBe("https://example.com");
+  });
+
+  it("rejects javascript: urls", () => {
+    const r = parseNoteInput({ text: "x", url: "javascript:alert(1)" });
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects empty/whitespace text", () => {
+    expect(parseNoteInput({ text: "" }).ok).toBe(false);
+    expect(parseNoteInput({ text: "   " }).ok).toBe(false);
+  });
+
+  it("rejects text over 500 chars", () => {
+    expect(parseNoteInput({ text: "a".repeat(501) }).ok).toBe(false);
+  });
+
+  it("falls back to sticky for unknown style", () => {
+    const r = parseNoteInput({ text: "x", style: "bogus" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.note.style).toBe("sticky");
+  });
+
+  it("rejects non-object input", () => {
+    expect(parseNoteInput(null).ok).toBe(false);
+    expect(parseNoteInput("hi").ok).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { MAX_BULK_IMPORT, MAX_NOTES_PER_JAR } from "@shared/constants";
 import type { Jar, NoteState } from "@shared/types";
-import { isValidNoteText, isValidUrl } from "@shared/validation";
-import { Router } from "express";
+import { isValidNoteText, isValidUrl, parseNoteInput } from "@shared/validation";
+import { type Response, Router } from "express";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
@@ -33,7 +33,7 @@ function isNoteState(v: unknown): v is NoteState {
 async function loadReadableJar(
   jarId: string,
   viewerId: string | null,
-  res: Parameters<Parameters<typeof noteRouter.get>[1]>[1],
+  res: Response,
 ): Promise<Jar | null> {
   const jar = await jarQueries.getJarById(pool, jarId);
   if (!jar) {
@@ -52,12 +52,13 @@ async function loadReadableJar(
 noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { jarId, text, url, style } = req.body;
-    if (!jarId || typeof text !== "string" || !isValidNoteText(text)) {
-      res.status(400).json({ error: "jarId and valid text (1-500 chars) are required" });
+    if (!jarId) {
+      res.status(400).json({ error: "jarId is required" });
       return;
     }
-    if (url !== undefined && url !== null && url !== "" && !isValidUrl(url)) {
-      res.status(400).json({ error: "Invalid URL" });
+    const parsed = parseNoteInput({ text, url, style });
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
       return;
     }
     const jar = await jarQueries.getJarById(pool, jarId);
@@ -76,9 +77,9 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
     }
     const note = await noteQueries.createNote(pool, {
       jarId,
-      text: text.trim(),
-      url: url || undefined,
-      style: style ?? "sticky",
+      text: parsed.note.text,
+      url: parsed.note.url,
+      style: parsed.note.style,
       authorId: getUser(req).id,
     });
     res.status(201).json(note);

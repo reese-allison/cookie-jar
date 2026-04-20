@@ -1,6 +1,6 @@
 import type { JarAppearance, JarConfig } from "@shared/types";
 import { sanitizeJarAppearance, sanitizeJarConfig } from "@shared/validation";
-import { Router } from "express";
+import { type Response, Router } from "express";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import { logger } from "../logger";
@@ -25,7 +25,7 @@ function asString(v: unknown): string {
  */
 function parseJarShape(
   body: { appearance?: unknown; config?: unknown },
-  res: Parameters<Parameters<typeof jarRouter.post>[1]>[1],
+  res: Response,
 ): { appearance?: JarAppearance; config?: JarConfig } | null {
   let appearance: JarAppearance | undefined;
   let config: JarConfig | undefined;

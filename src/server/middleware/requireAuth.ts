@@ -52,12 +52,20 @@ export async function requireAuth(
  * Populates `req.user` if a valid session cookie is present but never rejects
  * the request. Use on endpoints that are readable by anyone but where the
  * owner should see more (e.g. private jars).
+ *
+ * Short-circuits when no cookie header is present — skips the better-auth
+ * session lookup entirely for anonymous callers, which dominates traffic on
+ * public routes.
  */
 export async function attachUser(
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
+  if (!req.headers.cookie) {
+    next();
+    return;
+  }
   try {
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),

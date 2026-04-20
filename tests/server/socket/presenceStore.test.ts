@@ -87,4 +87,39 @@ describe("presenceStore (Redis)", () => {
     expect(await store.memberCount("presence-test-7b")).toBe(1);
     expect((await store.getMembers("presence-test-7a"))[0].id).toBe("m1");
   });
+
+  describe("addMemberIfUnderCap", () => {
+    it("accepts when under the participant cap", async () => {
+      const store = createPresenceStore(redis);
+      const r = await store.addMemberIfUnderCap("presence-test-8", makeMember("m1"), 3, 10);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.members).toHaveLength(1);
+    });
+
+    it("rejects the third participant when cap is 2", async () => {
+      const store = createPresenceStore(redis);
+      const a = await store.addMemberIfUnderCap("presence-test-9", makeMember("m1"), 2, 10);
+      const b = await store.addMemberIfUnderCap("presence-test-9", makeMember("m2"), 2, 10);
+      const c = await store.addMemberIfUnderCap("presence-test-9", makeMember("m3"), 2, 10);
+      expect(a.ok).toBe(true);
+      expect(b.ok).toBe(true);
+      expect(c.ok).toBe(false);
+      expect(await store.memberCount("presence-test-9")).toBe(2);
+    });
+
+    it("counts viewers and participants separately", async () => {
+      const store = createPresenceStore(redis);
+      const viewer = (id: string): RoomMember => ({
+        ...makeMember(id),
+        role: "viewer",
+      });
+      await store.addMemberIfUnderCap("presence-test-10", viewer("v1"), 1, 1);
+      // viewer cap hit — second viewer rejected
+      const v2 = await store.addMemberIfUnderCap("presence-test-10", viewer("v2"), 1, 1);
+      expect(v2.ok).toBe(false);
+      // participant slot still open
+      const p1 = await store.addMemberIfUnderCap("presence-test-10", makeMember("p1"), 1, 1);
+      expect(p1.ok).toBe(true);
+    });
+  });
 });

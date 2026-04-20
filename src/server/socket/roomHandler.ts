@@ -1,13 +1,5 @@
-import type {
-  ClientToServerEvents,
-  JarAppearance,
-  JarConfig,
-  Room,
-  RoomMember,
-  ServerToClientEvents,
-} from "@shared/types";
+import type { RoomMember } from "@shared/types";
 import { isValidDisplayName } from "@shared/validation";
-import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
@@ -17,187 +9,22 @@ import type { SocketDeps } from "./deps";
 import { withErrorHandler } from "./errorHandler";
 import type { IdleTimeoutManager } from "./idleTimeout";
 import { socketRateLimiter } from "./rateLimit";
+import {
+  attachMember,
+  buildJarRefreshPayload,
+  buildRoomState,
+  determineRole,
+  kickPriorSession,
+  pickColor,
+  sendNoteState,
+  startIdleTimeout,
+  type TypedSocket,
+  validateRoomJoin,
+} from "./roomHelpers";
 import type { TypedServer } from "./server";
 
-// Presence moved to Redis (PresenceStore) in Phase 3.3 — no per-pod map here.
-
-/**
- * Builds the compact `note:state` payload broadcast on `jar:refresh`. We
- * deliberately omit `pulledNotes` — it's unchanged by jar edits and costs
- * ~200 bytes/note × members. Clients must preserve their existing pulled
- * notes when this field is absent (see NoteStatePayload doc).
- */
-export function buildJarRefreshPayload(
-  jar: { config: JarConfig | null; appearance: JarAppearance | null },
-  inJarCount: number,
-  pullCounts: Record<string, number>,
-) {
-  return {
-    inJarCount,
-    pullCounts,
-    jarConfig: jar.config ?? undefined,
-    jarAppearance: jar.appearance ?? undefined,
-  };
-}
-
-// Dedup moved to Redis (dedupStore) in Phase 3.2 — see src/server/socket/dedupStore.ts
-
-const COLORS = [
-  "#FF6B6B",
-  "#4ECDC4",
-  "#45B7D1",
-  "#96CEB4",
-  "#FFEAA7",
-  "#DDA0DD",
-  "#98D8C8",
-  "#F7DC6F",
-  "#BB8FCE",
-  "#85C1E9",
-  "#F1948A",
-  "#82E0AA",
-  "#F8C471",
-  "#AED6F1",
-  "#D7BDE2",
-  "#A3E4D7",
-  "#FAD7A0",
-  "#A9CCE3",
-  "#D5DBDB",
-  "#EDBB99",
-];
-
-function pickColor(existing: RoomMember[]): string {
-  const usedColors = new Set(existing.map((m) => m.color));
-  return (
-    COLORS.find((c) => !usedColors.has(c)) ?? COLORS[Math.floor(Math.random() * COLORS.length)]
-  );
-}
-
-type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>;
-
-function buildRoomState(dbRoom: DbRoom, members: RoomMember[]): Room {
-  return {
-    id: dbRoom.id,
-    code: dbRoom.code,
-    jarId: dbRoom.jarId,
-    state: dbRoom.state,
-    maxParticipants: dbRoom.maxParticipants,
-    maxViewers: dbRoom.maxViewers,
-    idleTimeoutMinutes: dbRoom.idleTimeoutMinutes,
-    members,
-    createdAt: dbRoom.createdAt,
-  };
-}
-
-type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-
-function determineRole(ctx: SocketContext, jarOwnerId?: string): RoomMember["role"] {
-  if (ctx.isAuthenticated && ctx.userId === jarOwnerId) return "owner";
-  if (ctx.isAuthenticated) return "contributor";
-  return "viewer";
-}
-
-function hasCapacity(members: RoomMember[], role: RoomMember["role"], dbRoom: DbRoom) {
-  if (role === "viewer") {
-    return members.filter((m) => m.role === "viewer").length < dbRoom.maxViewers;
-  }
-  return members.filter((m) => m.role !== "viewer").length < dbRoom.maxParticipants;
-}
-
-/**
- * Cluster-aware: claims the (roomId, userId) slot via the Redis dedup store
- * and disconnects whichever socket used to hold it. If the old socket is on
- * this pod we disconnect locally; otherwise we publish via the kick bus and
- * the pod that owns it disconnects it.
- */
-async function kickPriorSession(
-  io: TypedServer,
-  deps: SocketDeps,
-  roomId: string,
-  userId: string,
-  newSocketId: string,
-): Promise<void> {
-  const prior = await deps.dedupStore.claim(roomId, userId, newSocketId);
-  if (!prior || prior === newSocketId) return;
-
-  const localOld = io.sockets.sockets.get(prior);
-  if (localOld) {
-    localOld.emit("room:error", "Signed in from another tab");
-    localOld.disconnect();
-    await deps.presenceStore.removeMember(roomId, prior);
-  } else {
-    await deps.kickBus.publishKick({
-      socketId: prior,
-      reason: "Signed in from another tab",
-    });
-  }
-}
-
-function attachMember(
-  ctx: SocketContext,
-  member: RoomMember,
-  roomId: string,
-  jarId: string,
-  jarConfig: JarConfig | null,
-): void {
-  ctx.roomId = roomId;
-  ctx.jarId = jarId;
-  ctx.jarConfig = jarConfig;
-  ctx.memberId = member.id;
-  ctx.displayName = member.displayName;
-  ctx.role = member.role;
-}
-
-async function sendNoteState(
-  socket: TypedSocket,
-  jarId: string,
-  isPrivate: boolean,
-  jarConfig: JarConfig | null,
-  jarAppearance: JarAppearance | null,
-  displayName: string | null,
-): Promise<void> {
-  const shared = {
-    jarConfig: jarConfig ?? undefined,
-    jarAppearance: jarAppearance ?? undefined,
-  };
-  const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
-  if (isPrivate) {
-    const [allPulled, pullCounts] = await Promise.all([
-      noteQueries.listNotesByJar(pool, jarId, "pulled"),
-      noteQueries.getPullCounts(pool, jarId),
-    ]);
-    // pulledBy is stored as the user's displayName (see pullRandomNote caller)
-    const myNotes = displayName ? allPulled.filter((n) => n.pulledBy === displayName) : [];
-    socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts, ...shared });
-  } else {
-    const pulledNotes = await noteQueries.listNotesByJar(pool, jarId, "pulled");
-    socket.emit("note:state", { inJarCount, pulledNotes, ...shared });
-  }
-}
-
-function startIdleTimeout(
-  io: TypedServer,
-  idleTimeouts: IdleTimeoutManager | undefined,
-  roomId: string,
-  timeoutMinutes: number,
-  deps: SocketDeps,
-): void {
-  if (!idleTimeouts) return;
-  idleTimeouts.start(roomId, timeoutMinutes, async (expiredRoomId) => {
-    await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
-    io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
-    io.in(expiredRoomId).disconnectSockets();
-    await deps.presenceStore.clearRoom(expiredRoomId);
-  });
-}
-
-function validateRoomJoin(
-  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomByCode>>,
-): string | null {
-  if (!dbRoom) return "Room not found";
-  if (dbRoom.state === "closed") return "Room is closed";
-  // Locked rooms allow members in — they just can't add/discard. Read-mostly mode.
-  return null;
-}
+// Re-exported for tests that still import from here.
+export { buildJarRefreshPayload };
 
 export function registerRoomHandlers(
   io: TypedServer,
@@ -231,13 +58,9 @@ export function registerRoomHandlers(
       const role = determineRole(ctx, jar?.ownerId);
       const effectiveName = ctx.displayName ?? displayName;
 
-      if (!hasCapacity(members, role, dbRoom)) {
-        socket.emit("room:error", "Room is full");
-        return;
-      }
-
-      // Enforce one session per authed user per room: kick any prior socket.
-      // Cluster-aware via Redis + pub/sub — see dedupStore + kickBus.
+      // Enforce one session per authed user per room: kick any prior socket
+      // *before* we try to claim a capacity slot — the old socket still
+      // counts toward the cap until it's gone.
       if (ctx.userId) {
         await kickPriorSession(io, deps, roomId, ctx.userId, socket.id);
       }
@@ -250,13 +73,22 @@ export function registerRoomHandlers(
         connectedAt: new Date().toISOString(),
       };
 
-      await deps.presenceStore.addMember(roomId, member);
+      // Atomic — the Lua script rejects if the role's bucket is full, so
+      // two concurrent joins can't both squeeze past the cap.
+      const result = await deps.presenceStore.addMemberIfUnderCap(
+        roomId,
+        member,
+        dbRoom.maxParticipants,
+        dbRoom.maxViewers,
+      );
+      if (!result.ok) {
+        socket.emit("room:error", "Room is full");
+        return;
+      }
       attachMember(ctx, member, roomId, dbRoom.jarId, jarConfig);
 
       await socket.join(roomId);
-      // Refetch so new member is included in room:state we send back.
-      const currentMembers = await deps.presenceStore.getMembers(roomId);
-      socket.emit("room:state", buildRoomState(dbRoom, currentMembers));
+      socket.emit("room:state", buildRoomState(dbRoom, result.members));
       const jarAppearance = jar?.appearance ?? null;
       await sendNoteState(
         socket,
@@ -300,6 +132,9 @@ export function registerRoomHandlers(
       }
       await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
       deps.roomStateCache.setLocked(ctx.roomId, true);
+      // Fire-and-forget: every other pod drops its cached lock state, so the
+      // next note:add anywhere sees the new value immediately (not 5s later).
+      void deps.cacheBus.publish({ scope: "room", id: ctx.roomId });
       io.to(ctx.roomId).emit("room:locked");
     }),
   );
@@ -314,15 +149,15 @@ export function registerRoomHandlers(
       }
       await roomQueries.updateRoomState(pool, ctx.roomId, "open");
       deps.roomStateCache.setLocked(ctx.roomId, false);
+      void deps.cacheBus.publish({ scope: "room", id: ctx.roomId });
       io.to(ctx.roomId).emit("room:unlocked");
     }),
   );
 
   // Owner requests a re-broadcast of jar state after a REST PATCH (name,
   // appearance, config). A jar edit doesn't change the pulled notes array —
-  // only config + appearance. We used to re-broadcast the full pulledNotes[]
-  // (~1MB fanout on 50-user rooms with 100 notes); now we send only the
-  // compact delta and clients keep their existing pulledNotes state.
+  // only config + appearance. We send the compact delta; clients preserve
+  // their existing pulledNotes state.
   socket.on(
     "jar:refresh",
     safe(async () => {
@@ -339,9 +174,9 @@ export function registerRoomHandlers(
       if (!jar) return;
       ctx.jarConfig = jar.config ?? null;
       // Refresh the pod-wide cache so *every* socket in this room (including
-      // this one's peers) gets the new config on their next note:pull, not
-      // just whoever triggered the refresh.
+      // this one's peers) gets the new config on their next note:pull.
       deps.roomStateCache.invalidateJar(ctx.jarId);
+      void deps.cacheBus.publish({ scope: "jar", id: ctx.jarId });
       const [inJarCount, pullCounts] = await Promise.all([
         noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
         noteQueries.getPullCounts(pool, ctx.jarId),

@@ -1,6 +1,6 @@
-import { MAX_NOTES_PER_JAR, NOTE_STYLES } from "@shared/constants";
+import { MAX_NOTES_PER_JAR } from "@shared/constants";
 import type { ClientToServerEvents, Note, ServerToClientEvents } from "@shared/types";
-import { isValidNoteText, isValidUrl } from "@shared/validation";
+import { parseNoteInput } from "@shared/validation";
 import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
@@ -20,25 +20,6 @@ function requireContributor(ctx: SocketContext, socket: TypedSocket): boolean {
     return false;
   }
   return true;
-}
-
-/** Validate + normalize incoming note input. Emits room:error and returns null on failure. */
-function validateNoteInput(
-  socket: TypedSocket,
-  input: { text: string; url?: string; style?: string },
-): { text: string; url?: string; style: Note["style"] } | null {
-  if (!isValidNoteText(input.text)) {
-    socket.emit("room:error", "Note text must be 1-500 characters");
-    return null;
-  }
-  if (input.url && !isValidUrl(input.url)) {
-    socket.emit("room:error", "Invalid URL");
-    return null;
-  }
-  const style = NOTE_STYLES.includes(input.style as (typeof NOTE_STYLES)[number])
-    ? (input.style as Note["style"])
-    : "sticky";
-  return { text: input.text, url: input.url, style };
 }
 
 /**
@@ -73,7 +54,7 @@ export function registerNoteHandlers(
 
   socket.on(
     "note:add",
-    safe(async (noteInput: { text: string; url?: string; style?: string }) => {
+    safe(async (noteInput: unknown) => {
       if (!guardRate("note:add")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
@@ -81,8 +62,12 @@ export function registerNoteHandlers(
         socket.emit("room:error", "The jar is locked — no new notes can be added");
         return;
       }
-      const validated = validateNoteInput(socket, noteInput);
-      if (!validated) return;
+      const parsed = parseNoteInput(noteInput);
+      if (!parsed.ok) {
+        socket.emit("room:error", parsed.error);
+        return;
+      }
+      const { note: validated } = parsed;
 
       const existing = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
       if (existing >= MAX_NOTES_PER_JAR) {
