@@ -1,6 +1,7 @@
 import type { DedupStore } from "./dedupStore";
 import type { KickBus } from "./kickBus";
 import type { PresenceStore } from "./presenceStore";
+import type { RoomStateCache } from "./roomStateCache";
 import type { SealedNotesStore } from "./sealedNotesStore";
 
 /**
@@ -13,4 +14,5 @@ export interface SocketDeps {
   dedupStore: DedupStore;
   kickBus: KickBus;
   presenceStore: PresenceStore;
+  roomStateCache: RoomStateCache;
 }

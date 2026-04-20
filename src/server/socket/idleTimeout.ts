@@ -6,7 +6,14 @@ interface RoomTimer {
   timeout: ReturnType<typeof setTimeout>;
   durationMs: number;
   onTimeout: TimeoutCallback;
+  /** Timestamp of the last Redis alive-key refresh, for debouncing cursor-storm writes. */
+  lastAliveRefreshAt: number;
 }
+
+// Cursor packets fire at ~15 Hz per user — left unthrottled, each resetActivity
+// would translate 1:1 into a Redis SET. Refreshing at most this often still
+// gives the room plenty of headroom before the idle timer fires.
+const ALIVE_REFRESH_INTERVAL_MS = 5_000;
 
 /**
  * Tracks idle timeouts for active rooms. Each pod runs its own timers for
@@ -30,13 +37,25 @@ export class IdleTimeoutManager {
     this.stop(roomId);
     const durationMs = timeoutMinutes * 60_000;
     void this.refreshAlive(roomId, durationMs);
-    this.scheduleLocal(roomId, { durationMs, onTimeout });
+    this.scheduleLocal(roomId, {
+      durationMs,
+      onTimeout,
+      lastAliveRefreshAt: Date.now(),
+    });
   }
 
   resetActivity(roomId: string): void {
     const timer = this.timers.get(roomId);
     if (!timer) return;
-    void this.refreshAlive(roomId, timer.durationMs);
+    const now = Date.now();
+    // Only touch Redis every few seconds — the local timer reset below is
+    // effectively free, and the alive-key is how remote pods know we're
+    // active. Missing a refresh for up to ALIVE_REFRESH_INTERVAL_MS is fine
+    // because the key's TTL is 2× the room's idle window (see refreshAlive).
+    if (now - timer.lastAliveRefreshAt >= ALIVE_REFRESH_INTERVAL_MS) {
+      timer.lastAliveRefreshAt = now;
+      void this.refreshAlive(roomId, timer.durationMs);
+    }
     clearTimeout(timer.timeout);
     this.scheduleLocal(roomId, timer);
   }
@@ -51,7 +70,7 @@ export class IdleTimeoutManager {
 
   private scheduleLocal(
     roomId: string,
-    config: { durationMs: number; onTimeout: TimeoutCallback },
+    config: { durationMs: number; onTimeout: TimeoutCallback; lastAliveRefreshAt: number },
   ): void {
     const timeout = setTimeout(() => {
       void this.onFire(roomId);

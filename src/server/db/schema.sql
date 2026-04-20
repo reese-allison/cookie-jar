@@ -117,5 +117,6 @@ CREATE TABLE pull_history (
 );
 
 CREATE INDEX idx_pull_history_jar_id ON pull_history(jar_id);
+CREATE INDEX idx_pull_history_jar_pulled_at ON pull_history(jar_id, pulled_at DESC);
 CREATE INDEX idx_pull_history_note_id ON pull_history(note_id);
 CREATE INDEX idx_pull_history_room_id ON pull_history(room_id);

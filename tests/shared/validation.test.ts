@@ -5,6 +5,8 @@ import {
   isValidNoteText,
   isValidRoomCode,
   isValidUrl,
+  sanitizeJarAppearance,
+  sanitizeJarConfig,
 } from "../../src/shared/validation";
 
 describe("isValidRoomCode", () => {
@@ -91,5 +93,85 @@ describe("generateRoomCode", () => {
   it("generates different codes on successive calls", () => {
     const codes = new Set(Array.from({ length: 50 }, () => generateRoomCode()));
     expect(codes.size).toBeGreaterThan(1);
+  });
+});
+
+describe("sanitizeJarAppearance", () => {
+  it("returns {} for null/undefined/empty", () => {
+    expect(sanitizeJarAppearance(undefined)).toEqual({});
+    expect(sanitizeJarAppearance(null)).toEqual({});
+    expect(sanitizeJarAppearance({})).toEqual({});
+  });
+
+  it("keeps valid http(s) URLs", () => {
+    const out = sanitizeJarAppearance({
+      openedImageUrl: "https://cdn.example.com/open.png",
+      closedImageUrl: "http://cdn.example.com/closed.png",
+    });
+    expect(out).toEqual({
+      openedImageUrl: "https://cdn.example.com/open.png",
+      closedImageUrl: "http://cdn.example.com/closed.png",
+    });
+  });
+
+  it("rejects javascript: URLs in image fields", () => {
+    expect(sanitizeJarAppearance({ openedImageUrl: "javascript:alert(1)" })).toBeNull();
+  });
+
+  it("rejects javascript: URLs in soundPack", () => {
+    expect(sanitizeJarAppearance({ soundPack: { notePull: "javascript:alert(1)" } })).toBeNull();
+  });
+
+  it("drops unknown fields silently", () => {
+    expect(sanitizeJarAppearance({ evilField: "bad" })).toEqual({});
+  });
+
+  it("rejects non-object input", () => {
+    expect(sanitizeJarAppearance("oops")).toBeNull();
+    expect(sanitizeJarAppearance(42)).toBeNull();
+  });
+
+  it("rejects oversized label", () => {
+    expect(sanitizeJarAppearance({ label: "x".repeat(101) })).toBeNull();
+  });
+});
+
+describe("sanitizeJarConfig", () => {
+  it("returns {} for null/undefined/empty", () => {
+    expect(sanitizeJarConfig(undefined)).toEqual({});
+    expect(sanitizeJarConfig(null)).toEqual({});
+    expect(sanitizeJarConfig({})).toEqual({});
+  });
+
+  it("accepts a complete valid config", () => {
+    const out = sanitizeJarConfig({
+      noteVisibility: "sealed",
+      pullVisibility: "private",
+      sealedRevealCount: 5,
+      showAuthors: true,
+      showPulledBy: false,
+    });
+    expect(out).toEqual({
+      noteVisibility: "sealed",
+      pullVisibility: "private",
+      sealedRevealCount: 5,
+      showAuthors: true,
+      showPulledBy: false,
+    });
+  });
+
+  it("rejects unknown enum values", () => {
+    expect(sanitizeJarConfig({ noteVisibility: "exploded" })).toBeNull();
+    expect(sanitizeJarConfig({ pullVisibility: "global" })).toBeNull();
+  });
+
+  it("rejects absurd sealedRevealCount", () => {
+    expect(sanitizeJarConfig({ sealedRevealCount: 0 })).toBeNull();
+    expect(sanitizeJarConfig({ sealedRevealCount: 10_000 })).toBeNull();
+    expect(sanitizeJarConfig({ sealedRevealCount: 1.5 })).toBeNull();
+  });
+
+  it("rejects non-boolean flags", () => {
+    expect(sanitizeJarConfig({ showAuthors: "yes" })).toBeNull();
   });
 });

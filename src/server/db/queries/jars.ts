@@ -65,9 +65,16 @@ export async function getJarById(pool: pg.Pool, id: string): Promise<Jar | null>
   return rows.length > 0 ? rowToJar(rows[0]) : null;
 }
 
-export async function listJarsByOwner(pool: pg.Pool, ownerId: string): Promise<Jar[]> {
+export async function listJarsByOwner(
+  pool: pg.Pool,
+  ownerId: string,
+  opts: { includePrivate?: boolean } = {},
+): Promise<Jar[]> {
+  // A public list request only returns explicitly-shared jars so enumerating
+  // another user's private collection with just their UUID isn't possible.
+  const filter = opts.includePrivate ? "" : " AND is_public = true";
   const { rows } = await pool.query(
-    "SELECT * FROM jars WHERE owner_id = $1 ORDER BY created_at DESC",
+    `SELECT * FROM jars WHERE owner_id = $1${filter} ORDER BY created_at DESC`,
     [ownerId],
   );
   return rows.map(rowToJar);

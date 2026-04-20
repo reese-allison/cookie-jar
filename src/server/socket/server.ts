@@ -3,6 +3,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@shared/types";
 import { createAdapter } from "@socket.io/redis-adapter";
 import Redis from "ioredis";
 import { Server } from "socket.io";
+import pool from "../db/pool";
 import { logger } from "../logger";
 import { type SocketAuthData, socketAuthMiddleware } from "./authMiddleware";
 import { createSocketContext } from "./context";
@@ -14,6 +15,7 @@ import { registerNoteHandlers } from "./noteHandler";
 import { createPresenceStore } from "./presenceStore";
 import { attachRedisHealthLogger } from "./redisHealthLogger";
 import { registerRoomHandlers } from "./roomHandler";
+import { createRoomStateCache } from "./roomStateCache";
 import { createSealedNotesStore } from "./sealedNotesStore";
 import { startSessionExpiryChecker } from "./sessionExpiryChecker";
 
@@ -71,6 +73,7 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     dedupStore: createDedupStore(stateClient),
     presenceStore: createPresenceStore(stateClient),
     kickBus,
+    roomStateCache: createRoomStateCache(pool),
   };
 
   // Subscribe for cross-pod kick requests: the pod that actually owns the

@@ -15,34 +15,34 @@ export function useSocket() {
   const cursorThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
   const dragThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
 
-  const {
-    setRoom,
-    setConnected,
-    setJoining,
-    setError,
-    setMyId,
-    addMember,
-    removeMember,
-    setCursor,
-    setLocked,
-  } = useRoomStore();
+  // Narrow selectors throughout — Zustand setters have stable identity, so
+  // pulling each one individually avoids the re-render storm that a
+  // whole-store destructure would cause on every `cursor:moved` packet
+  // (15 Hz × peers). Verified by tests/client/stores/narrowSelectors.test.tsx.
+  const setRoom = useRoomStore((s) => s.setRoom);
+  const setConnected = useRoomStore((s) => s.setConnected);
+  const setJoining = useRoomStore((s) => s.setJoining);
+  const setError = useRoomStore((s) => s.setError);
+  const setMyId = useRoomStore((s) => s.setMyId);
+  const addMember = useRoomStore((s) => s.addMember);
+  const removeMember = useRoomStore((s) => s.removeMember);
+  const setCursor = useRoomStore((s) => s.setCursor);
+  const setLocked = useRoomStore((s) => s.setLocked);
   const roomReset = useRoomStore((s) => s.reset);
 
-  const {
-    setNoteState,
-    noteAdded,
-    notePulled,
-    noteDiscarded,
-    noteReturned,
-    noteSealed,
-    notesRevealed,
-    setHistory,
-    setAdding,
-    setPulling,
-    setPeerDrag,
-    clearPeerDrag,
-    clearPeerDragsByUser,
-  } = useNoteStore();
+  const setNoteState = useNoteStore((s) => s.setNoteState);
+  const noteAdded = useNoteStore((s) => s.noteAdded);
+  const notePulled = useNoteStore((s) => s.notePulled);
+  const noteDiscarded = useNoteStore((s) => s.noteDiscarded);
+  const noteReturned = useNoteStore((s) => s.noteReturned);
+  const noteSealed = useNoteStore((s) => s.noteSealed);
+  const notesRevealed = useNoteStore((s) => s.notesRevealed);
+  const setHistory = useNoteStore((s) => s.setHistory);
+  const setAdding = useNoteStore((s) => s.setAdding);
+  const setPulling = useNoteStore((s) => s.setPulling);
+  const setPeerDrag = useNoteStore((s) => s.setPeerDrag);
+  const clearPeerDrag = useNoteStore((s) => s.clearPeerDrag);
+  const clearPeerDragsByUser = useNoteStore((s) => s.clearPeerDragsByUser);
   const noteReset = useNoteStore((s) => s.reset);
 
   useEffect(() => {

@@ -16,7 +16,7 @@ import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
 import { createUploadRouter } from "./routes/uploads";
 import { createShutdownHandler } from "./shutdown";
-import { createSocketServer } from "./socket/server";
+import { buildSocketServer } from "./socket/server";
 import { buildStorageFromEnv } from "./storage";
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
@@ -38,15 +38,18 @@ app.use(cookieParser());
 // better-auth handler — MUST be before express.json() per better-auth docs
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
 
-app.use(express.json());
+// Explicit body ceiling. The biggest legitimate payload is a jar edit with a
+// full sound pack of URLs; 64kb is ample and prevents a slow attacker from
+// tying up memory with pathological JSON.
+app.use(express.json({ limit: "64kb" }));
 
 // Static files (uploads, sounds) — no rate limit; static assets have their own
 // cache headers and rate-limiting them would hurt users on slow networks.
 app.use("/uploads", buildUploadsStatic("public/uploads"));
 app.use("/sounds", buildSoundsStatic("public/sounds"));
 
-// Socket.io
-const io = createSocketServer(httpServer);
+// Socket.io — keep the stop() so shutdown closes the adapter's Redis clients.
+const { io, stop: stopSocketServer } = buildSocketServer(httpServer);
 
 // Shared Redis client for health checks + rate-limit store. Keeps rate limits
 // cluster-wide correct once we run more than one pod.
@@ -87,7 +90,7 @@ const { register: registerShutdown } = createShutdownHandler({
   pools: [pool, authPool],
   logger,
   graceMs,
-  cleanups: [() => sharedRedis.quit()],
+  cleanups: [() => stopSocketServer(), () => sharedRedis.quit()],
 });
 registerShutdown();
 

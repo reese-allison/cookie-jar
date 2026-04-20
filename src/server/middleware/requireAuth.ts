@@ -47,3 +47,31 @@ export async function requireAuth(
     res.status(401).json({ error: "Authentication required" });
   }
 }
+
+/**
+ * Populates `req.user` if a valid session cookie is present but never rejects
+ * the request. Use on endpoints that are readable by anyone but where the
+ * owner should see more (e.g. private jars).
+ */
+export async function attachUser(
+  req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (session?.user) {
+      req.user = {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image ?? undefined,
+      };
+    }
+  } catch {
+    // Fall through — unauth'd is a valid state for these routes.
+  }
+  next();
+}

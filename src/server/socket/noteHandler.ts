@@ -5,7 +5,6 @@ import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
 import * as pullHistoryQueries from "../db/queries/pullHistory";
-import * as roomQueries from "../db/queries/rooms";
 import { withTransaction } from "../db/transaction";
 import type { SocketContext } from "./context";
 import type { SocketDeps } from "./deps";
@@ -43,15 +42,13 @@ function validateNoteInput(
 }
 
 /**
- * Checks whether the room is currently locked. Locked rooms permit pulls and
- * returns but reject new notes and discards — the jar becomes read-mostly.
- * Queries the DB since room state can change from another socket's lock action
- * at any time and isn't cached in our per-socket ctx.
+ * Pulls lock state from the pod's TTL cache (see roomStateCache). The cache is
+ * invalidated immediately on room:lock/unlock, so same-pod reads are coherent
+ * and cross-pod ones converge within the TTL.
  */
-async function isRoomLocked(ctx: SocketContext): Promise<boolean> {
+async function isRoomLocked(ctx: SocketContext, deps: SocketDeps): Promise<boolean> {
   if (!ctx.roomId) return false;
-  const room = await roomQueries.getRoomById(pool, ctx.roomId);
-  return room?.state === "locked";
+  return deps.roomStateCache.getLocked(ctx.roomId);
 }
 
 export function registerNoteHandlers(
@@ -80,7 +77,7 @@ export function registerNoteHandlers(
       if (!guardRate("note:add")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
-      if (await isRoomLocked(ctx)) {
+      if (await isRoomLocked(ctx, deps)) {
         socket.emit("room:error", "The jar is locked — no new notes can be added");
         return;
       }
@@ -101,8 +98,9 @@ export function registerNoteHandlers(
         authorId: ctx.userId ?? undefined,
       });
 
-      const inJarCount = await noteQueries.countNotesByState(pool, ctx.jarId, "in_jar");
-      io.to(ctx.roomId).emit("note:added", note, inJarCount);
+      // We just inserted one row and already counted the prior total, so a
+      // second COUNT(*) would only duplicate work.
+      io.to(ctx.roomId).emit("note:added", note, existing + 1);
     }),
   );
 
@@ -134,12 +132,15 @@ export function registerNoteHandlers(
         return;
       }
 
-      const isSealed = ctx.jarConfig?.noteVisibility === "sealed";
-      const isPrivate = ctx.jarConfig?.pullVisibility === "private";
+      // Read config from the pod's cache — ctx.jarConfig is set at join time
+      // and goes stale when the owner edits the jar via REST + jar:refresh.
+      const { config: liveConfig } = await deps.roomStateCache.getJar(jarId);
+      const isSealed = liveConfig?.noteVisibility === "sealed";
+      const isPrivate = liveConfig?.pullVisibility === "private";
 
       if (isSealed) {
         const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
-        await handleSealedPull(io, ctx, note, pulledBy, inJarCount, deps);
+        await handleSealedPull(io, ctx, note, pulledBy, inJarCount, deps, liveConfig);
       } else if (isPrivate) {
         socket.emit("note:pulled", note, pulledBy);
         const [inJarCount, pullCounts] = await Promise.all([
@@ -160,7 +161,7 @@ export function registerNoteHandlers(
       if (!guardRate("note:discard")) return;
       if (!ctx.roomId || !ctx.jarId) return;
       if (!requireContributor(ctx, socket)) return;
-      if (await isRoomLocked(ctx)) {
+      if (await isRoomLocked(ctx, deps)) {
         socket.emit("room:error", "The jar is locked — notes can't be discarded");
         return;
       }
@@ -211,7 +212,8 @@ export function registerNoteHandlers(
       if (!guardRate("history:get")) return;
       if (!ctx.jarId) return;
       const entries = await pullHistoryQueries.getHistory(pool, ctx.jarId);
-      const isPrivate = ctx.jarConfig?.pullVisibility === "private";
+      const { config } = await deps.roomStateCache.getJar(ctx.jarId);
+      const isPrivate = config?.pullVisibility === "private";
       const filtered =
         isPrivate && ctx.role !== "owner"
           ? entries.filter((e) => e.pulledBy === ctx.displayName)
@@ -249,9 +251,10 @@ async function handleSealedPull(
   pulledBy: string,
   inJarCount: number,
   deps: SocketDeps,
+  liveConfig: { sealedRevealCount?: number } | null,
 ): Promise<void> {
   if (!ctx.roomId) return;
-  const revealAt = ctx.jarConfig?.sealedRevealCount ?? 1;
+  const revealAt = liveConfig?.sealedRevealCount ?? 1;
   const len = await deps.sealedNotesStore.push(ctx.roomId, note);
   io.to(ctx.roomId).emit("note:sealed", pulledBy, len, revealAt, inJarCount);
   if (len >= revealAt) {

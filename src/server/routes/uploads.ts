@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
+import { logger } from "../logger";
 import { type AuthenticatedRequest, requireAuth } from "../middleware/requireAuth";
 import { extForMime, type Storage } from "../storage";
 
@@ -44,7 +45,8 @@ export function createUploadRouter(storage: Storage): Router {
       const key = `${randomUUID()}${extForMime(req.file.mimetype)}`;
       const url = await storage.put(key, req.file.buffer, req.file.mimetype);
       res.status(201).json({ url });
-    } catch {
+    } catch (err) {
+      logger.error({ err }, "POST /api/uploads failed");
       res.status(500).json({ error: "Failed to store upload" });
     }
   });

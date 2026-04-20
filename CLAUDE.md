@@ -85,7 +85,7 @@ cookie-jar/
 - **Jars are images**: A jar is two user-uploaded images (opened/closed). A hand-drawn default SVG is shown when no custom art is set. Procedural Web Audio (additive bell + filtered noise) serves as default sounds; per-jar sound packs override.
 - **Upload storage abstraction**: `Storage` interface + `LocalDiskStorage` (dev default, `public/uploads/`) and `S3Storage` (R2 or AWS). Selected by `STORAGE_BACKEND` env. Content-addressed keys so uploads are safely cacheable forever.
 - **Per-socket rate limiting**: Token-bucket in Redis-adjacent memory (not cluster-shared yet) — `note:add` 2/s burst 5, `note:pull` 1/s burst 3, `jar:refresh` 1/3s, etc. Violations emit the `rate_limited` event. Volatile high-frequency events (`cursor:move`, `note:drag`) are throttled client-side + server-marked volatile.
-- **Dev auth**: `better-auth`'s anonymous plugin is registered only when `NODE_ENV !== "production"`. The client's "Continue anonymously" button is gated on `import.meta.env.DEV`. Use it for local flows without OAuth credentials. `DEV_ANON_ROLE` env var can additionally elevate anon sockets — dev only.
+- **Dev auth**: `better-auth`'s anonymous plugin is registered only when `NODE_ENV !== "production"`. The client's "Continue anonymously" button is gated on `import.meta.env.DEV`. Use it for local flows without OAuth credentials.
 
 ## Commands
 
@@ -170,4 +170,3 @@ Runtime config is read from `.env` (dev) or the platform's env (prod). Non-obvio
 | `STORAGE_BACKEND` | `local` | `local` or `s3` (covers R2) |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL_BASE` | — | Required when `STORAGE_BACKEND=s3`; for R2 set `S3_REGION=auto` and `S3_ENDPOINT=https://{acct}.r2.cloudflarestorage.com` |
 | `ALLOW_DESTRUCTIVE_MIGRATION` | — | Set to `1` to bypass `db:migrate:check` refusing destructive SQL |
-| `DEV_ANON_ROLE` | — | Dev-only role elevation for anon sockets (`owner`/`contributor`/`viewer`) |

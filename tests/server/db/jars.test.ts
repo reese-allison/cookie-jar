@@ -91,9 +91,14 @@ describe("jar queries", () => {
       config: TEST_CONFIG,
     });
 
-    const jars = await jarQueries.listJarsByOwner(pool, testUserId);
-    expect(jars).toHaveLength(2);
-    expect(jars.map((j) => j.name).sort()).toEqual(["Jar A", "Jar B"]);
+    // Default call hides private jars (enumeration guard); includePrivate is
+    // how the owner's own listing gets everything.
+    const publicOnly = await jarQueries.listJarsByOwner(pool, testUserId);
+    expect(publicOnly).toHaveLength(0);
+
+    const mine = await jarQueries.listJarsByOwner(pool, testUserId, { includePrivate: true });
+    expect(mine).toHaveLength(2);
+    expect(mine.map((j) => j.name).sort()).toEqual(["Jar A", "Jar B"]);
   });
 
   it("updates a jar name", async () => {

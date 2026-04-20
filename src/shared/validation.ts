@@ -33,3 +33,119 @@ export function isValidDisplayName(name: string): boolean {
   const trimmed = name.trim();
   return trimmed.length > 0 && trimmed.length <= 30;
 }
+
+const APPEARANCE_URL_FIELDS = ["openedImageUrl", "closedImageUrl", "backgroundImageUrl"] as const;
+const SOUND_PACK_KEYS = [
+  "noteAdd",
+  "notePull",
+  "noteDiscard",
+  "noteReturn",
+  "userJoin",
+  "userLeave",
+] as const;
+
+function isEmpty(v: unknown): boolean {
+  return v === undefined || v === null || v === "";
+}
+
+function cleanUrl(v: unknown): string | null | "skip" {
+  if (isEmpty(v)) return "skip";
+  if (typeof v !== "string" || !isValidUrl(v)) return null;
+  return v;
+}
+
+function sanitizeSoundPack(input: unknown): Record<string, string> | null {
+  if (typeof input !== "object" || input === null) return null;
+  const pack = input as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of SOUND_PACK_KEYS) {
+    const parsed = cleanUrl(pack[key]);
+    if (parsed === null) return null;
+    if (parsed === "skip") continue;
+    out[key] = parsed;
+  }
+  return out;
+}
+
+function collectAppearanceUrls(
+  obj: Record<string, unknown>,
+  out: Record<string, unknown>,
+): boolean {
+  for (const field of APPEARANCE_URL_FIELDS) {
+    const parsed = cleanUrl(obj[field]);
+    if (parsed === null) return false;
+    if (parsed !== "skip") out[field] = parsed;
+  }
+  return true;
+}
+
+/**
+ * Validate and normalize a user-supplied `JarAppearance`. Returns the cleaned
+ * shape or null if anything fails. URL fields must be http(s) — this is what
+ * keeps `javascript:` URLs from ending up in `<img src>` or `fetch()`.
+ */
+export function sanitizeJarAppearance(input: unknown): Record<string, unknown> | null {
+  if (input === undefined || input === null) return {};
+  if (typeof input !== "object") return null;
+  const obj = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (!collectAppearanceUrls(obj, out)) return null;
+  if (!isEmpty(obj.label)) {
+    if (typeof obj.label !== "string" || obj.label.length > 100) return null;
+    out.label = obj.label;
+  }
+  if (obj.soundPack !== undefined && obj.soundPack !== null) {
+    const pack = sanitizeSoundPack(obj.soundPack);
+    if (!pack) return null;
+    out.soundPack = pack;
+  }
+  return out;
+}
+
+const NOTE_VISIBILITIES = ["open", "sealed"] as const;
+const PULL_VISIBILITIES = ["shared", "private"] as const;
+
+type CheckResult = { ok: true; value: unknown } | { ok: false };
+
+function checkEnum<T extends readonly string[]>(v: unknown, allowed: T): CheckResult {
+  if (typeof v !== "string" || !allowed.includes(v as T[number])) return { ok: false };
+  return { ok: true, value: v };
+}
+
+function checkIntBounded(v: unknown, min: number, max: number): CheckResult {
+  if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) return { ok: false };
+  return { ok: true, value: v };
+}
+
+function checkBoolean(v: unknown): CheckResult {
+  if (typeof v !== "boolean") return { ok: false };
+  return { ok: true, value: v };
+}
+
+/**
+ * Validate and normalize a user-supplied `JarConfig`. Numeric fields are
+ * clamped — an owner can't set a 2-billion-note reveal threshold to trip
+ * server code that assumes reasonable bounds.
+ */
+export function sanitizeJarConfig(input: unknown): Record<string, unknown> | null {
+  if (input === undefined || input === null) return {};
+  if (typeof input !== "object") return null;
+  const obj = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  const fields: Array<[string, () => CheckResult]> = [
+    ["noteVisibility", () => checkEnum(obj.noteVisibility, NOTE_VISIBILITIES)],
+    ["pullVisibility", () => checkEnum(obj.pullVisibility, PULL_VISIBILITIES)],
+    ["sealedRevealCount", () => checkIntBounded(obj.sealedRevealCount, 1, 1000)],
+    ["showAuthors", () => checkBoolean(obj.showAuthors)],
+    ["showPulledBy", () => checkBoolean(obj.showPulledBy)],
+  ];
+
+  for (const [key, check] of fields) {
+    if (obj[key] === undefined) continue;
+    const result = check();
+    if (!result.ok) return null;
+    out[key] = result.value;
+  }
+  return out;
+}

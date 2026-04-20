@@ -299,6 +299,7 @@ export function registerRoomHandlers(
         return;
       }
       await roomQueries.updateRoomState(pool, ctx.roomId, "locked");
+      deps.roomStateCache.setLocked(ctx.roomId, true);
       io.to(ctx.roomId).emit("room:locked");
     }),
   );
@@ -312,6 +313,7 @@ export function registerRoomHandlers(
         return;
       }
       await roomQueries.updateRoomState(pool, ctx.roomId, "open");
+      deps.roomStateCache.setLocked(ctx.roomId, false);
       io.to(ctx.roomId).emit("room:unlocked");
     }),
   );
@@ -336,6 +338,10 @@ export function registerRoomHandlers(
       const jar = await jarQueries.getJarById(pool, ctx.jarId);
       if (!jar) return;
       ctx.jarConfig = jar.config ?? null;
+      // Refresh the pod-wide cache so *every* socket in this room (including
+      // this one's peers) gets the new config on their next note:pull, not
+      // just whoever triggered the refresh.
+      deps.roomStateCache.invalidateJar(ctx.jarId);
       const [inJarCount, pullCounts] = await Promise.all([
         noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
         noteQueries.getPullCounts(pool, ctx.jarId),
