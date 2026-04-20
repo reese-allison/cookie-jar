@@ -182,15 +182,30 @@ export function registerNoteHandlers(
   // the group sees the note moving in real time. Volatile for move updates
   // (drop intermediate packets if client is slow) so buffering can't build up.
   // Silent rate-drop: same reasoning as cursor:move — best-effort stream.
-  socket.on("note:drag", (noteId: string, mx: number, my: number) => {
+  socket.on("note:drag", (noteId, mx, my) => {
     if (!ctx.roomId) return;
     if (!socketRateLimiter.allow(socket.id, "note:drag")) return;
+    // Same validation concern as cursor:move — a crafted client can send
+    // non-string noteId or non-number coords. Broadcasting junk breaks peer
+    // rendering (peerDrags.set keyed by a bogus value, NaN coords, etc.).
+    if (
+      typeof noteId !== "string" ||
+      noteId.length === 0 ||
+      noteId.length > 64 ||
+      typeof mx !== "number" ||
+      typeof my !== "number" ||
+      !Number.isFinite(mx) ||
+      !Number.isFinite(my)
+    ) {
+      return;
+    }
     socket.volatile.to(ctx.roomId).emit("note:drag", noteId, socket.id, mx, my);
   });
 
-  socket.on("note:drag_end", (noteId: string) => {
+  socket.on("note:drag_end", (noteId) => {
     if (!ctx.roomId) return;
     if (!socketRateLimiter.allow(socket.id, "note:drag_end")) return;
+    if (typeof noteId !== "string" || noteId.length === 0 || noteId.length > 64) return;
     socket.to(ctx.roomId).emit("note:drag_end", noteId, socket.id);
   });
 

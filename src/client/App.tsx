@@ -12,6 +12,7 @@ import { useNoteStore } from "./stores/noteStore";
 import { useRoomStore } from "./stores/roomStore";
 
 type SessionUser = { displayName: string; image?: string } | null;
+type SocketApi = ReturnType<typeof useSocket>;
 
 function App() {
   const { data: session } = useSession();
@@ -24,15 +25,20 @@ function App() {
     ? { displayName: session.user.name, image: session.user.image ?? undefined }
     : null;
 
-  if (!room) return <LandingScreen user={user} />;
-  return <InRoomScreen user={user} session={session} />;
+  // Socket must be owned by App — not by the screens — so it survives the
+  // Landing → InRoom transition that happens when `room:state` arrives.
+  // Regression guard: tests/client/App.socketLifetime.test.tsx.
+  const socketApi = useSocket();
+
+  if (!room) return <LandingScreen user={user} socketApi={socketApi} />;
+  return <InRoomScreen user={user} session={session} socketApi={socketApi} />;
 }
 
-function LandingScreen({ user }: { user: SessionUser }) {
+function LandingScreen({ user, socketApi }: { user: SessionUser; socketApi: SocketApi }) {
   const isJoining = useRoomStore((s) => s.isJoining);
   const error = useRoomStore((s) => s.error);
   const setError = useRoomStore((s) => s.setError);
-  const { joinRoom } = useSocket();
+  const { joinRoom } = socketApi;
   const displayName = user?.displayName ?? "Host";
 
   const { isCreating, openRoomForJar, createJarAndJoin, cloneTemplateAndJoin } = useJarActions({
@@ -68,9 +74,11 @@ function LandingScreen({ user }: { user: SessionUser }) {
 function InRoomScreen({
   user,
   session,
+  socketApi,
 }: {
   user: SessionUser;
   session: ReturnType<typeof useSession>["data"];
+  socketApi: SocketApi;
 }) {
   const room = useRoomStore((s) => s.room);
   const isConnected = useRoomStore((s) => s.isConnected);
@@ -83,7 +91,6 @@ function InRoomScreen({
   const jarConfig = useNoteStore((s) => s.jarConfig);
   const jarAppearance = useNoteStore((s) => s.jarAppearance);
   const history = useNoteStore((s) => s.history);
-  const peerDrags = useNoteStore((s) => s.peerDrags);
   const sealedCount = useNoteStore((s) => s.sealedCount);
   const sealedRevealAt = useNoteStore((s) => s.sealedRevealAt);
   const {
@@ -101,7 +108,7 @@ function InRoomScreen({
     dragNote,
     dragNoteEnd,
     refreshJar,
-  } = useSocket();
+  } = socketApi;
   const jarName = useJarName(room?.jarId);
   const displayName = user?.displayName ?? "Host";
 
@@ -155,7 +162,6 @@ function InRoomScreen({
         onReturn={returnNote}
         onDragNote={dragNote}
         onDragNoteEnd={dragNoteEnd}
-        peerDrags={peerDrags}
         history={history}
         onGetHistory={getHistory}
         onClearHistory={isOwner ? clearHistory : undefined}

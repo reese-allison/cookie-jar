@@ -7,6 +7,7 @@ import * as roomQueries from "../db/queries/rooms";
 import type { SocketContext } from "./context";
 import type { SocketDeps } from "./deps";
 import { withErrorHandler } from "./errorHandler";
+import { fireAndForget } from "./fireAndForget";
 import type { IdleTimeoutManager } from "./idleTimeout";
 import { socketRateLimiter } from "./rateLimit";
 import {
@@ -108,10 +109,10 @@ export function registerRoomHandlers(
   );
 
   socket.on("room:leave", () => {
-    void handleLeave();
+    fireAndForget(handleLeave(), "handleLeave(room:leave)");
   });
   socket.on("disconnect", () => {
-    void handleLeave();
+    fireAndForget(handleLeave(), "handleLeave(disconnect)");
     socketRateLimiter.dispose(socket.id);
   });
 
@@ -121,9 +122,22 @@ export function registerRoomHandlers(
     // "rate_limited" UX for a best-effort stream would be noisy. The budget
     // is set so a human client never hits it.
     if (!socketRateLimiter.allow(socket.id, "cursor:move")) return;
+    // Validate: socket.io types don't run at runtime, so a crafted client
+    // can send {x: "💩", y: {}}. We'd broadcast junk that breaks peers'
+    // cursor rendering. Silently drop malformed packets.
+    if (
+      !position ||
+      typeof position.x !== "number" ||
+      typeof position.y !== "number" ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return;
+    }
     idleTimeouts?.resetActivity(ctx.roomId);
     socket.volatile.to(ctx.roomId).emit("cursor:moved", {
-      ...position,
+      x: position.x,
+      y: position.y,
       userId: socket.id,
     });
   });
@@ -141,7 +155,10 @@ export function registerRoomHandlers(
       deps.roomStateCache.setLocked(ctx.roomId, true);
       // Fire-and-forget: every other pod drops its cached lock state, so the
       // next note:add anywhere sees the new value immediately (not 5s later).
-      void deps.cacheBus.publish({ scope: "room", id: ctx.roomId });
+      fireAndForget(
+        deps.cacheBus.publish({ scope: "room", id: ctx.roomId }),
+        "cacheBus.publish(room:lock)",
+      );
       io.to(ctx.roomId).emit("room:locked");
     }),
   );
@@ -156,7 +173,10 @@ export function registerRoomHandlers(
       }
       await roomQueries.updateRoomState(pool, ctx.roomId, "open");
       deps.roomStateCache.setLocked(ctx.roomId, false);
-      void deps.cacheBus.publish({ scope: "room", id: ctx.roomId });
+      fireAndForget(
+        deps.cacheBus.publish({ scope: "room", id: ctx.roomId }),
+        "cacheBus.publish(room:unlock)",
+      );
       io.to(ctx.roomId).emit("room:unlocked");
     }),
   );
@@ -183,7 +203,10 @@ export function registerRoomHandlers(
       // Refresh the pod-wide cache so *every* socket in this room (including
       // this one's peers) gets the new config on their next note:pull.
       deps.roomStateCache.invalidateJar(ctx.jarId);
-      void deps.cacheBus.publish({ scope: "jar", id: ctx.jarId });
+      fireAndForget(
+        deps.cacheBus.publish({ scope: "jar", id: ctx.jarId }),
+        "cacheBus.publish(jar:refresh)",
+      );
       const [inJarCount, pullCounts] = await Promise.all([
         noteQueries.countNotesByState(pool, ctx.jarId, "in_jar"),
         noteQueries.getPullCounts(pool, ctx.jarId),
@@ -202,13 +225,13 @@ export function registerRoomHandlers(
       await deps.presenceStore.clearRoom(roomId);
       idleTimeouts?.stop(roomId);
       // Fire-and-forget — if it fails, TTL on the key will clean up eventually.
-      void deps.sealedNotesStore.clear(roomId);
+      fireAndForget(deps.sealedNotesStore.clear(roomId), "sealedNotesStore.clear");
     }
 
     if (userId) {
       // Fire-and-forget — compare-and-delete, so a stale release can't clobber
       // a newer tab that already claimed the slot.
-      void deps.dedupStore.release(roomId, userId, memberId);
+      fireAndForget(deps.dedupStore.release(roomId, userId, memberId), "dedupStore.release");
     }
 
     socket.to(roomId).emit("room:member_left", memberId);

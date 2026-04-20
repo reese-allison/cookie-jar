@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import { logger } from "../logger";
 
 type TimeoutCallback = (roomId: string) => void;
 
@@ -36,7 +37,7 @@ export class IdleTimeoutManager {
   start(roomId: string, timeoutMinutes: number, onTimeout: TimeoutCallback): void {
     this.stop(roomId);
     const durationMs = timeoutMinutes * 60_000;
-    void this.refreshAlive(roomId, durationMs);
+    this.safeRefreshAlive(roomId, durationMs);
     this.scheduleLocal(roomId, {
       durationMs,
       onTimeout,
@@ -54,10 +55,18 @@ export class IdleTimeoutManager {
     // because the key's TTL is 2× the room's idle window (see refreshAlive).
     if (now - timer.lastAliveRefreshAt >= ALIVE_REFRESH_INTERVAL_MS) {
       timer.lastAliveRefreshAt = now;
-      void this.refreshAlive(roomId, timer.durationMs);
+      this.safeRefreshAlive(roomId, timer.durationMs);
     }
     clearTimeout(timer.timeout);
     this.scheduleLocal(roomId, timer);
+  }
+
+  // Wrap the fire-and-forget refresh so a Redis blip logs instead of becoming
+  // an unhandled rejection that can take the pod down.
+  private safeRefreshAlive(roomId: string, durationMs: number): void {
+    this.refreshAlive(roomId, durationMs).catch((err: unknown) => {
+      logger.error({ err, roomId }, "idle-timeout refreshAlive failed");
+    });
   }
 
   stop(roomId: string): void {
@@ -73,7 +82,9 @@ export class IdleTimeoutManager {
     config: { durationMs: number; onTimeout: TimeoutCallback; lastAliveRefreshAt: number },
   ): void {
     const timeout = setTimeout(() => {
-      void this.onFire(roomId);
+      this.onFire(roomId).catch((err: unknown) => {
+        logger.error({ err, roomId }, "idle-timeout onFire failed");
+      });
     }, config.durationMs);
     this.timers.set(roomId, { ...config, timeout });
   }

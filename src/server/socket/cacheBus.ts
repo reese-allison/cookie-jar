@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import { logger } from "../logger";
 
 const CHANNEL = "cookie-jar:cache-invalidate";
 
@@ -47,7 +48,9 @@ export function createCacheBus(pubClient: Redis, subClient: Redis): CacheBus {
       await pubClient.publish(CHANNEL, JSON.stringify(msg));
     },
     onInvalidate(handler) {
-      void ensureSubscribed();
+      ensureSubscribed().catch((err: unknown) => {
+        logger.error({ err }, "cacheBus subscribe failed");
+      });
       handlers.add(handler);
       return () => {
         handlers.delete(handler);

@@ -4,7 +4,7 @@ import { memo, useEffect } from "react";
 import type { Rect } from "../hooks/hitTest";
 import { type DropTarget, useDragNote } from "../hooks/useDragNote";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import type { PeerDrag } from "../stores/noteStore";
+import { useNoteStore } from "../stores/noteStore";
 import { PulledNote } from "./PulledNote";
 
 interface DraggablePulledNoteProps {
@@ -17,7 +17,6 @@ interface DraggablePulledNoteProps {
   onHover: (target: DropTarget) => void;
   onDragNote: (noteId: string, mx: number, my: number) => void;
   onDragNoteEnd: (noteId: string) => void;
-  peerDrag: PeerDrag | undefined;
   jarRect: React.RefObject<Rect | null>;
   discardRect: React.RefObject<Rect | null>;
 }
@@ -25,6 +24,8 @@ interface DraggablePulledNoteProps {
 // Memoized — RoomView re-renders on cursor/room changes, but each dragged
 // note's render only depends on its own note object, the drag callbacks, and
 // whether a peer is currently dragging it. Shallow compare handles that.
+// peerDrag is read from the store directly so a drag-tick on one note only
+// re-renders that note, not every sibling.
 export const DraggablePulledNote = memo(function DraggablePulledNote({
   note,
   showPulledBy,
@@ -34,10 +35,10 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
   onHover,
   onDragNote,
   onDragNoteEnd,
-  peerDrag,
   jarRect,
   discardRect,
 }: DraggablePulledNoteProps) {
+  const peerDrag = useNoteStore((s) => s.peerDrags.get(note.id));
   const isPeerDragging = peerDrag !== undefined;
 
   const { bind, style, isDragging } = useDragNote({

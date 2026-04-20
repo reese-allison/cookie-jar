@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import { logger } from "../logger";
 
 const CHANNEL = "cookie-jar:socket-kick";
 
@@ -28,8 +29,8 @@ export function createKickBus(pubClient: Redis, subClient: Redis): KickBus {
   let subscribed = false;
   const handlers = new Set<(msg: KickMessage) => void>();
 
-  function ensureSubscribed(): Promise<void> {
-    if (subscribed) return Promise.resolve();
+  async function ensureSubscribed(): Promise<void> {
+    if (subscribed) return;
     subscribed = true;
     subClient.on("message", (channel, payload) => {
       if (channel !== CHANNEL) return;
@@ -40,7 +41,7 @@ export function createKickBus(pubClient: Redis, subClient: Redis): KickBus {
         // Ignore malformed messages — nothing to do.
       }
     });
-    return subClient.subscribe(CHANNEL).then(() => undefined);
+    await subClient.subscribe(CHANNEL);
   }
 
   return {
@@ -48,7 +49,9 @@ export function createKickBus(pubClient: Redis, subClient: Redis): KickBus {
       await pubClient.publish(CHANNEL, JSON.stringify(msg));
     },
     onKick(handler) {
-      void ensureSubscribed();
+      ensureSubscribed().catch((err: unknown) => {
+        logger.error({ err }, "kickBus subscribe failed");
+      });
       handlers.add(handler);
       return () => {
         handlers.delete(handler);

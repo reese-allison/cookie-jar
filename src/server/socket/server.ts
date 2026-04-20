@@ -40,6 +40,11 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
       origin: clientUrl,
       credentials: true,
     },
+    // Legit payloads top out at a few hundred bytes (cursor positions, note
+    // text ≤ 500 chars). Default is 1 MB which lets a single malicious frame
+    // chew a lot of CPU before we can reject it. 16 KB is generous for any
+    // real event while still bounded.
+    maxHttpBufferSize: 16 * 1024,
   });
 
   // Set up Redis adapter for horizontal scaling

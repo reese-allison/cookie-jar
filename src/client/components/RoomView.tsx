@@ -11,7 +11,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import type { PeerDrag } from "../stores/noteStore";
 import { CopyableRoomCode } from "./CopyableRoomCode";
 import { Cursor } from "./Cursor";
 import { DiscardBin } from "./DiscardBin";
@@ -38,7 +37,6 @@ interface RoomViewProps {
   jarName?: string;
   sealedCount: number;
   sealedRevealAt: number;
-  peerDrags: Map<string, PeerDrag>;
   onMouseMove: (x: number, y: number) => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -69,7 +67,6 @@ export function RoomView({
   jarName,
   sealedCount,
   sealedRevealAt,
-  peerDrags,
   onMouseMove,
   onLock,
   onUnlock,
@@ -247,7 +244,6 @@ export function RoomView({
               onHover={handleHover}
               onDragNote={onDragNote}
               onDragNoteEnd={onDragNoteEnd}
-              peerDrag={peerDrags.get(note.id)}
               jarRect={jarRect}
               discardRect={discardRect}
             />
