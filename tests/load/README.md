@@ -22,19 +22,6 @@ k6 run tests/load/cursors.js \
 
 **Check:** `p(95) ws_connecting < 2000ms`, `checks > 95%`.
 
-### `uploads.js` — Upload burst
-
-Fires 20 uploads/sec for 30 seconds against `/api/uploads`. Exercises the REST rate limiter, multer memory pipeline, and Storage backend (local disk or R2 depending on env).
-
-```bash
-# Sign in via the UI first, copy the better-auth session cookie from DevTools
-k6 run tests/load/uploads.js \
-  -e BASE_URL=http://localhost:3001 \
-  -e COOKIE='better-auth.session_token=...'
-```
-
-**Check:** all responses are either 201 or 429. `p(95) http_req_duration < 1000ms` for 201s.
-
 ## Baselines
 
 Record fresh numbers here after any Phase 3 / Phase 4 perf change so we can detect regressions.
@@ -42,4 +29,3 @@ Record fresh numbers here after any Phase 3 / Phase 4 perf change so we can dete
 | Run date | Scenario | p50 (ms) | p95 (ms) | Error rate | Notes |
 |---|---|---|---|---|---|
 | _pending first run_ | cursors | — | — | — | — |
-| _pending first run_ | uploads | — | — | — | — |

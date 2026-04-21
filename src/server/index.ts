@@ -9,16 +9,14 @@ import pool from "./db/pool";
 import { logger } from "./logger";
 import { buildDefaultLimiters } from "./middleware/rateLimit";
 import { applySecurityHeaders } from "./middleware/securityHeaders";
-import { buildCompression, buildSoundsStatic, buildUploadsStatic } from "./middleware/static";
+import { buildCompression, buildSoundsStatic } from "./middleware/static";
 import { createHealthRouter } from "./routes/health";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
-import { createRedisQuota, createUploadRouter } from "./routes/uploads";
 import { createShutdownHandler } from "./shutdown";
 import { setSocketServer } from "./socket/broadcaster";
 import { buildSocketServer } from "./socket/server";
-import { buildStorageFromEnv } from "./storage";
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
 
@@ -44,9 +42,7 @@ app.all("/api/auth/{*splat}", toNodeHandler(auth));
 // tying up memory with pathological JSON.
 app.use(express.json({ limit: "64kb" }));
 
-// Static files (uploads, sounds) — no rate limit; static assets have their own
-// cache headers and rate-limiting them would hurt users on slow networks.
-app.use("/uploads", buildUploadsStatic("public/uploads"));
+// Static sound assets — no rate limit; cache headers are on each response.
 app.use("/sounds", buildSoundsStatic("public/sounds"));
 
 // Socket.io — keep the stop() so shutdown closes the adapter's Redis clients.
@@ -71,9 +67,8 @@ app.use(
 );
 
 // Per-method rate limiting: reads get the generous budget (300/min), writes
-// the stricter one (60/min), uploads a tighter 10/min. Applying a single
-// limiter at the mount prefix would count `GET /api/rooms/:code` (a join
-// lookup) against the write quota.
+// the stricter one (60/min). Applying a single limiter at the mount prefix
+// would count `GET /api/rooms/:code` (a join lookup) against the write quota.
 const limiters = buildDefaultLimiters(sharedRedis);
 const readOrWrite = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const handler = req.method === "GET" || req.method === "HEAD" ? limiters.read : limiters.write;
@@ -82,12 +77,6 @@ const readOrWrite = (req: express.Request, res: express.Response, next: express.
 app.use("/api/jars", readOrWrite, jarRouter);
 app.use("/api/notes", readOrWrite, noteRouter);
 app.use("/api/rooms", readOrWrite, roomRouter);
-const uploadStorage = buildStorageFromEnv();
-app.use(
-  "/api/uploads",
-  limiters.upload,
-  createUploadRouter(uploadStorage, createRedisQuota(sharedRedis)),
-);
 
 // 404 for any /api route that didn't match a handler. Without this, Express
 // falls through to its default HTML 404 page, breaking clients that expect
@@ -97,10 +86,10 @@ app.use("/api", (_req: express.Request, res: express.Response) => {
   res.status(404).json({ error: "Not found" });
 });
 
-// Terminal error handler. Catches multer (mime/size rejection), unhandled
-// route throws that bypass each router's try/catch, and anything the body
-// parser rejects (malformed JSON, payload too large). Returns the JSON shape
-// every other endpoint emits so client error handling stays uniform.
+// Terminal error handler. Catches unhandled route throws that bypass each
+// router's try/catch and anything the body parser rejects (malformed JSON,
+// payload too large). Returns the JSON shape every other endpoint emits so
+// client error handling stays uniform.
 const jsonErrorHandler: express.ErrorRequestHandler = (err, req, res, _next) => {
   const e = err as Error & { status?: number; statusCode?: number };
   const status = e.status ?? e.statusCode ?? 500;

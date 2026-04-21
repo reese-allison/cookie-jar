@@ -46,7 +46,7 @@ RUN bun install --frozen-lockfile --production && \
     rm -rf \
       @babel @biomejs @playwright @react-spring @rolldown \
       @testing-library @types @use-gesture @vitejs @vitest \
-      aws-sdk-client-mock concurrently dotenv-cli jsdom \
+      concurrently dotenv-cli jsdom \
       lightningcss-* node-pg-migrate react react-dom supertest \
       terser typescript vite vite-plugin-pwa vitest zustand && \
     # Residual transitive dev-only cruft from the above:

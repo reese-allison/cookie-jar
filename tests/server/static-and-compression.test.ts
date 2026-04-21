@@ -4,11 +4,7 @@ import { join } from "node:path";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  buildCompression,
-  buildSoundsStatic,
-  buildUploadsStatic,
-} from "../../src/server/middleware/static";
+import { buildCompression, buildSoundsStatic } from "../../src/server/middleware/static";
 
 describe("compression middleware", () => {
   it("gzips JSON responses that exceed the threshold", async () => {
@@ -33,30 +29,15 @@ describe("compression middleware", () => {
 });
 
 describe("static routes", () => {
-  let uploadsDir: string;
   let soundsDir: string;
 
   beforeAll(() => {
-    uploadsDir = mkdtempSync(join(tmpdir(), "cj-uploads-"));
     soundsDir = mkdtempSync(join(tmpdir(), "cj-sounds-"));
-    writeFileSync(join(uploadsDir, "jar.png"), "png-bytes");
     writeFileSync(join(soundsDir, "bell.mp3"), "mp3-bytes");
   });
 
   afterAll(() => {
-    rmSync(uploadsDir, { recursive: true, force: true });
     rmSync(soundsDir, { recursive: true, force: true });
-  });
-
-  it("serves uploads with immutable one-year cache", async () => {
-    const app = express();
-    app.use("/uploads", buildUploadsStatic(uploadsDir));
-    const res = await request(app).get("/uploads/jar.png");
-    expect(res.status).toBe(200);
-    const cc = res.headers["cache-control"] ?? "";
-    expect(cc).toContain("public");
-    expect(cc).toMatch(/max-age=31536000/);
-    expect(cc).toContain("immutable");
   });
 
   it("serves sounds with shorter cache (not immutable)", async () => {

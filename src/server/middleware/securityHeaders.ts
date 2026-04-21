@@ -16,8 +16,7 @@ export function applySecurityHeaders(app: Express): void {
         },
       },
       crossOriginOpenerPolicy: false,
-      // Our uploads are served via express.static; we want them loadable
-      // cross-origin from the client app.
+      // Static sound assets are loaded cross-origin from the client app.
       crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
   );

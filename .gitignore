@@ -45,9 +45,6 @@ coverage/
 # Redis dump
 dump.rdb
 
-# User uploads (local dev)
-public/uploads/
-
 # Playwright
 playwright-report/
 test-results/

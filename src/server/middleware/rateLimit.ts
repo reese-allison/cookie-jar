@@ -36,13 +36,11 @@ export function buildRateLimiter(cfg: RateLimiterConfig): RateLimitRequestHandle
 export const DEFAULT_LIMITS = {
   read: { windowMs: 60_000, limit: 300 },
   write: { windowMs: 60_000, limit: 60 },
-  upload: { windowMs: 60_000, limit: 10 },
 } as const;
 
 export function buildDefaultLimiters(redis?: Redis) {
   return {
     read: buildRateLimiter({ ...DEFAULT_LIMITS.read, prefix: "read", redis }),
     write: buildRateLimiter({ ...DEFAULT_LIMITS.write, prefix: "write", redis }),
-    upload: buildRateLimiter({ ...DEFAULT_LIMITS.upload, prefix: "upload", redis }),
   };
 }

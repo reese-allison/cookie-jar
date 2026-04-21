@@ -37,7 +37,7 @@ export default defineConfig({
       // are runtime API responses, not build output — so we cap precache to the
       // app shell + static icons.
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//, /^\/uploads\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
       },
       // Dev PWA is off by default; flip this on locally if you need to debug the SW.
@@ -75,7 +75,6 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://localhost:3001",
-      "/uploads": "http://localhost:3001",
       "/sounds": "http://localhost:3001",
       "/socket.io": {
         target: "http://localhost:3001",
@@ -87,7 +86,6 @@ export default defineConfig({
     port: 4173,
     proxy: {
       "/api": "http://localhost:3001",
-      "/uploads": "http://localhost:3001",
       "/sounds": "http://localhost:3001",
       "/socket.io": {
         target: "http://localhost:3001",

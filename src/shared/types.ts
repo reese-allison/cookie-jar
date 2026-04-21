@@ -38,9 +38,11 @@ export type PullVisibility = "shared" | "private";
 export type OnLeaveBehavior = "return" | "discard";
 
 /**
- * A jar's visual identity is two user-uploaded images (opened and closed states)
- * plus an optional background. This lets users make the "jar" anything they want —
- * a cookie jar, a cauldron, a treasure chest, a hat, whatever.
+ * A jar's visual identity is two owner-supplied image URLs (opened and closed
+ * states) plus an optional background. Owners point these fields at their own
+ * hosted assets — the server validates protocol + length but doesn't host
+ * uploads itself. Lets users make the "jar" anything they want — cookie jar,
+ * cauldron, treasure chest, hat, whatever.
  */
 export interface JarSoundPack {
   noteAdd?: string;

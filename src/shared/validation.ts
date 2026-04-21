@@ -17,8 +17,8 @@ export function isValidUrl(url: string): boolean {
   // protocol check exists to stop `javascript:` / `data:` URLs from ever
   // reaching PulledNote's `<a href={note.url}>` — React does not sanitize
   // href and would otherwise execute them on click.
-  // MAX_NOTE_URL_LENGTH is generous — OAuth return URLs and pre-signed
-  // S3 URLs routinely run ~1 KB.
+  // MAX_NOTE_URL_LENGTH is generous — OAuth return URLs and external CDN
+  // URLs with signed tokens routinely run ~1 KB.
   if (url.length > MAX_NOTE_URL_LENGTH) return false;
   try {
     const parsed = new URL(url);
