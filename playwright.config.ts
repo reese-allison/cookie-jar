@@ -14,6 +14,13 @@ export default defineConfig({
   timeout: 30_000,
   expect: {
     timeout: 8_000,
+    // Visual snapshot comparison: allow a tiny anti-alias / sub-pixel wiggle so
+    // font-hinting jitter doesn't flake, but anything real still fails.
+    toHaveScreenshot: {
+      maxDiffPixels: 40,
+      threshold: 0.2,
+      animations: "disabled",
+    },
   },
   use: {
     baseURL: BASE_URL,

@@ -3,21 +3,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as jarQueries from "../../../src/server/db/queries/jars";
 import * as noteQueries from "../../../src/server/db/queries/notes";
 import * as userQueries from "../../../src/server/db/queries/users";
-import type { JarAppearance, JarConfig } from "../../../src/shared/types";
+import { makeJarAppearance, makeJarConfig } from "../../helpers/fixtures";
 
 let pool: pg.Pool;
 let testUserId: string;
 let testJarId: string;
 
-const TEST_APPEARANCE: JarAppearance = {
-  label: "Test Jar",
-};
-
-const TEST_CONFIG: JarConfig = {
-  noteVisibility: "open",
-  sealedRevealCount: 1,
-  showAuthors: false,
-};
+const TEST_APPEARANCE = makeJarAppearance();
+const TEST_CONFIG = makeJarConfig();
 
 beforeAll(async () => {
   pool = new pg.Pool({
@@ -183,5 +176,73 @@ describe("note queries", () => {
 
     const notes = await noteQueries.listNotesByJar(pool, testJarId);
     expect(notes).toHaveLength(0);
+  });
+
+  describe("bulkTransitionPulled", () => {
+    it("returns every pulled note to in_jar and clears puller identity", async () => {
+      // Seed three notes and pull them all so they're on the table.
+      for (const text of ["A", "B", "C"]) {
+        await noteQueries.createNote(pool, { jarId: testJarId, text, style: "sticky" });
+      }
+      for (let i = 0; i < 3; i++) {
+        await noteQueries.pullRandomNote(pool, testJarId, "someone", testUserId);
+      }
+      const ids = await noteQueries.bulkTransitionPulled(pool, testJarId, "in_jar");
+      expect(ids).toHaveLength(3);
+      const rows = await noteQueries.listNotesByJar(pool, testJarId, "in_jar");
+      expect(rows).toHaveLength(3);
+      expect(rows.every((n) => !n.pulledBy && !n.pulledByUserId)).toBe(true);
+    });
+
+    it("discards every pulled note without touching in_jar ones", async () => {
+      await noteQueries.createNote(pool, { jarId: testJarId, text: "pulled-me", style: "sticky" });
+      await noteQueries.createNote(pool, {
+        jarId: testJarId,
+        text: "still-in-jar",
+        style: "sticky",
+      });
+      await noteQueries.pullRandomNote(pool, testJarId, "anon");
+      const ids = await noteQueries.bulkTransitionPulled(pool, testJarId, "discarded");
+      expect(ids).toHaveLength(1);
+      expect(await noteQueries.countNotesByState(pool, testJarId, "in_jar")).toBe(1);
+      expect(await noteQueries.countNotesByState(pool, testJarId, "discarded")).toBe(1);
+    });
+
+    it("is a no-op when nothing is pulled", async () => {
+      const ids = await noteQueries.bulkTransitionPulled(pool, testJarId, "in_jar");
+      expect(ids).toHaveLength(0);
+    });
+  });
+
+  describe("transitionPulledNotesFor", () => {
+    it("flips only the given user's pulls back to in_jar", async () => {
+      const other = await userQueries.createUser(pool, {
+        displayName: "Other User",
+        email: "other-notes@example.com",
+      });
+      for (const text of ["mine", "theirs"]) {
+        await noteQueries.createNote(pool, { jarId: testJarId, text, style: "sticky" });
+      }
+      await noteQueries.pullRandomNote(pool, testJarId, "Me", testUserId);
+      await noteQueries.pullRandomNote(pool, testJarId, "Them", other.id);
+      const moved = await noteQueries.transitionPulledNotesFor(pool, testJarId, "in_jar", {
+        userId: testUserId,
+        displayName: "Me",
+      });
+      expect(moved).toHaveLength(1);
+      expect(await noteQueries.countNotesByState(pool, testJarId, "pulled")).toBe(1);
+      await pool.query("DELETE FROM users WHERE id = $1", [other.id]);
+    });
+
+    it("falls back to display-name match when the puller had no user id", async () => {
+      await noteQueries.createNote(pool, { jarId: testJarId, text: "anon-pull", style: "sticky" });
+      // Anon pull — no userId.
+      await noteQueries.pullRandomNote(pool, testJarId, "GuestName");
+      const moved = await noteQueries.transitionPulledNotesFor(pool, testJarId, "in_jar", {
+        userId: null,
+        displayName: "GuestName",
+      });
+      expect(moved).toHaveLength(1);
+    });
   });
 });

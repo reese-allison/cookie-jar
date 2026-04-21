@@ -28,7 +28,7 @@ export function CreateJar({ onCreate, isCreating }: CreateJarProps) {
           maxLength={100}
           disabled={isCreating}
         />
-        <button type="submit" disabled={isCreating || !name.trim()}>
+        <button type="submit" className="btn btn--inline" disabled={isCreating || !name.trim()}>
           {isCreating ? "Creating..." : "Create Jar"}
         </button>
       </form>

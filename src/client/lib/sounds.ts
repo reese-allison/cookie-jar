@@ -254,43 +254,66 @@ class SoundManager {
   private playProcedural(sound: SoundName): void {
     switch (sound) {
       case "noteAdd": {
-        // Short paper flutter + soft "plop" into paper below
+        // Folded paper dropped into a ceramic jar: quick paper whisper, then a
+        // bright ceramic "tink" where it touches the rim, then a brief body
+        // resonance. Total ~0.4s so it still feels snappy when tapped rapidly.
+        // Paper whisper — brief, airy, descending
         this.playNoise({
-          duration: 0.08,
-          filterFreq: 4200,
-          filterQ: 0.8,
-          peakGain: 0.22,
-          release: 0.07,
-          sweepTo: 1800,
+          duration: 0.07,
+          filterFreq: 5200,
+          filterQ: 0.9,
+          peakGain: 0.18,
+          release: 0.06,
+          sweepTo: 2400,
         });
+        // Ceramic tink — short inharmonic bell so it has "clay" character
+        this.playBell({
+          freq: 1480,
+          duration: 0.28,
+          peakGain: 0.22,
+          offset: 0.05,
+          partials: [
+            [1.0, 1.0, 1.0],
+            [2.24, 0.42, 0.55],
+            [3.57, 0.2, 0.35],
+          ],
+        });
+        // Tiny body resonance — gives the jar weight without thumping
         this.playTone(
           {
-            freq: 520,
-            duration: 0.1,
+            freq: 180,
+            duration: 0.18,
             type: "sine",
-            peakGain: 0.16,
-            sweepTo: 260,
+            peakGain: 0.09,
+            sweepTo: 120,
           },
-          0.04,
+          0.07,
         );
         return;
       }
 
       case "notePull": {
-        // Paper sliding out + cheerful bell chime
+        // Paper sliding out + soft warm chime. Sweep downward (not up) so the
+        // whisper feels like paper leaving the jar rather than squealing out,
+        // and drop the bell an octave-ish to C5 to take the shrillness off.
         this.playNoise({
-          duration: 0.18,
-          filterFreq: 2400,
-          filterQ: 3.5,
-          peakGain: 0.18,
-          sweepTo: 5500,
-          release: 0.14,
+          duration: 0.22,
+          filterFreq: 3200,
+          filterQ: 2,
+          peakGain: 0.13,
+          sweepTo: 1400,
+          release: 0.18,
         });
         this.playBell({
-          freq: 784, // G5 — bright and welcoming
-          duration: 0.55,
-          peakGain: 0.28,
+          freq: 523.25, // C5 — warm, welcoming, not piercing
+          duration: 0.5,
+          peakGain: 0.2,
           offset: 0.08,
+          partials: [
+            [1.0, 1.0, 1.0],
+            [2.0, 0.4, 0.6],
+            [3.0, 0.18, 0.4],
+          ],
         });
         return;
       }
@@ -339,26 +362,37 @@ class SoundManager {
       }
 
       case "noteReturn": {
-        // Soft rising paper swish + gentle plucked tone
+        // Returning mirrors adding — same folded-paper-into-ceramic-jar
+        // composition as noteAdd so both "going in" actions feel identical.
         this.playNoise({
-          duration: 0.2,
-          filterFreq: 900,
-          filterQ: 2.5,
-          peakGain: 0.14,
-          sweepTo: 3400,
-          release: 0.18,
+          duration: 0.07,
+          filterFreq: 5200,
+          filterQ: 0.9,
+          peakGain: 0.18,
+          release: 0.06,
+          sweepTo: 2400,
         });
         this.playBell({
-          freq: 523.25, // C5 — warm and settled
-          duration: 0.45,
-          peakGain: 0.18,
-          offset: 0.06,
+          freq: 1480,
+          duration: 0.28,
+          peakGain: 0.22,
+          offset: 0.05,
           partials: [
             [1.0, 1.0, 1.0],
-            [2.0, 0.4, 0.65],
-            [3.0, 0.18, 0.4],
+            [2.24, 0.42, 0.55],
+            [3.57, 0.2, 0.35],
           ],
         });
+        this.playTone(
+          {
+            freq: 180,
+            duration: 0.18,
+            type: "sine",
+            peakGain: 0.09,
+            sweepTo: 120,
+          },
+          0.07,
+        );
         return;
       }
 

@@ -37,4 +37,5 @@ export const DEFAULT_JAR_CONFIG = {
   sealedRevealCount: 1,
   showAuthors: false,
   showPulledBy: false,
+  onLeaveBehavior: "return",
 } as const;

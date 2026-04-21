@@ -3,20 +3,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as jarQueries from "../../../src/server/db/queries/jars";
 import * as roomQueries from "../../../src/server/db/queries/rooms";
 import * as userQueries from "../../../src/server/db/queries/users";
-import type { JarAppearance, JarConfig } from "../../../src/shared/types";
+import { makeJarAppearance, makeJarConfig } from "../../helpers/fixtures";
 
 let pool: pg.Pool;
 let testUserId: string;
 let otherUserId: string;
 
-const APPEARANCE: JarAppearance = { label: "T" };
-const CONFIG: JarConfig = {
-  noteVisibility: "open",
-  pullVisibility: "shared",
-  sealedRevealCount: 1,
-  showAuthors: false,
-  showPulledBy: false,
-};
+const APPEARANCE = makeJarAppearance({ label: "T" });
+const CONFIG = makeJarConfig();
 
 beforeAll(async () => {
   pool = new pg.Pool({
@@ -66,23 +60,24 @@ describe("listOwnedJarsWithRooms", () => {
     expect(result[0].activeRooms).toEqual([]);
   });
 
-  it("includes open and locked rooms but excludes closed rooms", async () => {
+  it("includes open rooms and excludes closed rooms", async () => {
+    // The partial unique index on rooms(jar_id) WHERE state != 'closed' caps
+    // active rooms at one per jar — so we round-trip a closed-then-open
+    // sequence rather than parallel rooms. Lock state moved to jarConfig
+    // (rooms.state is no longer 'locked' anywhere in the app code).
     const jar = await jarQueries.createJar(pool, {
       ownerId: testUserId,
       name: "Busy Jar",
       appearance: APPEARANCE,
       config: CONFIG,
     });
-    const openRoom = await roomQueries.createRoom(pool, { jarId: jar.id });
-    const lockedRoom = await roomQueries.createRoom(pool, { jarId: jar.id });
-    await roomQueries.updateRoomState(pool, lockedRoom.id, "locked");
     const closedRoom = await roomQueries.createRoom(pool, { jarId: jar.id });
     await roomQueries.updateRoomState(pool, closedRoom.id, "closed");
+    const openRoom = await roomQueries.createRoom(pool, { jarId: jar.id });
 
     const result = await jarQueries.listOwnedJarsWithRooms(pool, testUserId);
     expect(result).toHaveLength(1);
-    const codes = result[0].activeRooms.map((r) => r.code).sort();
-    expect(codes).toEqual([openRoom.code, lockedRoom.code].sort());
+    expect(result[0].activeRooms.map((r) => r.code)).toEqual([openRoom.code]);
   });
 
   it("does not return jars owned by other users", async () => {

@@ -139,6 +139,7 @@ export function sanitizeJarAppearance(input: unknown): Record<string, unknown> |
 
 const NOTE_VISIBILITIES = ["open", "sealed"] as const;
 const PULL_VISIBILITIES = ["shared", "private"] as const;
+const ON_LEAVE_BEHAVIORS = ["return", "discard"] as const;
 
 type CheckResult = { ok: true; value: unknown } | { ok: false };
 
@@ -155,6 +156,41 @@ function checkIntBounded(v: unknown, min: number, max: number): CheckResult {
 function checkBoolean(v: unknown): CheckResult {
   if (typeof v !== "boolean") return { ok: false };
   return { ok: true, value: v };
+}
+
+// Basic email shape check — mirrors what better-auth stores. We deliberately
+// don't get cute with the RFC spec (that regex is 6 KB); the worst case of a
+// typo'd entry is "person can't join until owner fixes it."
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Realistic ceiling — protects the jar config row size and keeps the UI from
+// trying to render a list of thousands.
+const MAX_ALLOWLIST_ENTRIES = 200;
+
+function checkEmailList(v: unknown): CheckResult {
+  if (!Array.isArray(v)) return { ok: false };
+  if (v.length > MAX_ALLOWLIST_ENTRIES) return { ok: false };
+  const seen = new Set<string>();
+  for (const entry of v) {
+    if (typeof entry !== "string") return { ok: false };
+    const normalized = entry.trim().toLowerCase();
+    if (!EMAIL_RE.test(normalized)) return { ok: false };
+    seen.add(normalized);
+  }
+  // Return deduped, normalized list — callers persist whatever we return.
+  return { ok: true, value: Array.from(seen) };
+}
+
+function checkUserIdList(v: unknown): CheckResult {
+  if (!Array.isArray(v)) return { ok: false };
+  if (v.length > MAX_ALLOWLIST_ENTRIES) return { ok: false };
+  const seen = new Set<string>();
+  for (const entry of v) {
+    if (typeof entry !== "string" || !UUID_RE.test(entry)) return { ok: false };
+    seen.add(entry);
+  }
+  return { ok: true, value: Array.from(seen) };
 }
 
 /**
@@ -174,6 +210,10 @@ export function sanitizeJarConfig(input: unknown): Record<string, unknown> | nul
     ["sealedRevealCount", () => checkIntBounded(obj.sealedRevealCount, 1, 1000)],
     ["showAuthors", () => checkBoolean(obj.showAuthors)],
     ["showPulledBy", () => checkBoolean(obj.showPulledBy)],
+    ["onLeaveBehavior", () => checkEnum(obj.onLeaveBehavior, ON_LEAVE_BEHAVIORS)],
+    ["locked", () => checkBoolean(obj.locked)],
+    ["allowedUserIds", () => checkUserIdList(obj.allowedUserIds)],
+    ["allowedEmails", () => checkEmailList(obj.allowedEmails)],
   ];
 
   for (const [key, check] of fields) {

@@ -196,35 +196,9 @@ describe("cursor broadcasting", () => {
   });
 });
 
-describe("room lock/unlock", () => {
-  it("rejects lock from anonymous user (not owner)", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
-
-    alice.connect();
-    await waitForEvent(alice, "room:state");
-
-    const errorPromise = waitForEvent(alice, "room:error");
-    alice.emit("room:lock");
-
-    const [error] = await errorPromise;
-    expect(error).toContain("owner");
-  });
-
-  it("rejects unlock from anonymous user (not owner)", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    clients.push(alice);
-
-    alice.connect();
-    await waitForEvent(alice, "room:state");
-
-    const errorPromise = waitForEvent(alice, "room:error");
-    alice.emit("room:unlock");
-
-    const [error] = await errorPromise;
-    expect(error).toContain("owner");
-  });
-});
+// Lock/unlock moved into jarConfig.locked — owner toggles via PATCH
+// /api/jars/:id + jar:refresh. There's no dedicated room:lock socket event
+// anymore, so there's nothing to test at this layer.
 
 describe("jar:refresh", () => {
   it("rejects jar:refresh from anonymous user (not owner)", async () => {

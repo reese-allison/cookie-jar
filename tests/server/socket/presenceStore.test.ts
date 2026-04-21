@@ -1,7 +1,7 @@
-import type { RoomMember } from "@shared/types";
 import Redis from "ioredis";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createPresenceStore } from "../../../src/server/socket/presenceStore";
+import type { RoomMember } from "../../../src/shared/types";
 
 let redis: Redis;
 

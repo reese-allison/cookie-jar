@@ -1,5 +1,6 @@
 import type { PullHistoryEntry } from "@shared/types";
 import { useState } from "react";
+import { useNoteStore } from "../stores/noteStore";
 
 interface PullHistoryProps {
   entries: PullHistoryEntry[];
@@ -9,16 +10,22 @@ interface PullHistoryProps {
 
 export function PullHistory({ entries, onRefresh, onClear }: PullHistoryProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const historyDirty = useNoteStore((s) => s.historyDirty);
 
   return (
     <div className="pull-history">
       <button
         type="button"
-        className="pull-history__toggle"
+        className="btn--ghost pull-history__toggle"
         aria-expanded={isOpen}
         onClick={() => {
-          setIsOpen(!isOpen);
-          if (!isOpen) onRefresh();
+          const nextOpen = !isOpen;
+          setIsOpen(nextOpen);
+          // Only refetch when there's new data since the last fetch. Without
+          // this, rapid toggles hit the server's 1-per-5s history:get budget
+          // and surface a "doing that too fast" error for what the user
+          // perceives as a pure UI-state flip.
+          if (nextOpen && historyDirty) onRefresh();
         }}
       >
         History {isOpen ? "^" : "v"}

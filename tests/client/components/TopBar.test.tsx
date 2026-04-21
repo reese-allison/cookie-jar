@@ -46,4 +46,20 @@ describe("TopBar component", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
     expect(onSignOut).toHaveBeenCalled();
   });
+
+  it("shows a Sign in button when user is null and calls onSignIn", () => {
+    const onSignIn = vi.fn();
+    render(<TopBar user={null} onSignIn={onSignIn} />);
+    const btn = screen.getByRole("button", { name: /sign in/i });
+    fireEvent.click(btn);
+    expect(onSignIn).toHaveBeenCalled();
+    // Signed-in-only controls must not leak into the signed-out state.
+    expect(screen.queryByRole("button", { name: /my jars/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+  });
+
+  it("still renders the brand when signed out", () => {
+    render(<TopBar user={null} onSignIn={vi.fn()} />);
+    expect(screen.getByText(/cookie jar/i)).toBeDefined();
+  });
 });

@@ -20,6 +20,10 @@ const CONFIGS: Record<string, BucketConfig> = {
   "note:return": { ratePerSec: 2, burst: 4 },
   "history:get": { ratePerSec: 0.2, burst: 1 }, // 1 per 5 s
   "jar:refresh": { ratePerSec: 1 / 3, burst: 1 }, // 1 per 3 s
+  // Bulk ops touch every pulled row + fan out per-note broadcasts. Keep them
+  // tight so repeated clicks don't hammer the DB.
+  "note:returnAll": { ratePerSec: 1 / 3, burst: 1 },
+  "note:discardAll": { ratePerSec: 1 / 3, burst: 1 },
   // High-frequency ephemeral events. Client throttles to 15 Hz; the server
   // budget is ~double that so honest clients never hit it and a malicious
   // client can't amplify fan-out beyond what a real user would trigger.

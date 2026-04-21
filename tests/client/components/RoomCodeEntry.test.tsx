@@ -23,11 +23,14 @@ describe("RoomCodeEntry landing tabs", () => {
     expect(screen.queryByPlaceholderText("Jar name")).toBeNull();
   });
 
-  it("switches to the Host tab and shows AuthButtons when unauthed", () => {
+  it("switches to the Host tab and points unauthed users to the top bar", () => {
+    // Auth now lives in the universal TopBar, not inside this tab. The host
+    // tab should only explain that signing in is required — no duplicate
+    // provider buttons — and hide the Join form.
     render(<RoomCodeEntry {...baseProps} />);
     fireEvent.click(screen.getByRole("radio", { name: /host/i }));
-    expect(screen.getByRole("button", { name: /sign in with google/i })).toBeDefined();
-    // Join-only controls should be hidden on the Host tab
+    expect(screen.queryByRole("button", { name: /sign in with google/i })).toBeNull();
+    expect(screen.getByText(/sign in.*host/i)).toBeDefined();
     expect(screen.queryByRole("textbox", { name: /room code/i })).toBeNull();
   });
 
@@ -53,5 +56,11 @@ describe("RoomCodeEntry landing tabs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /join room/i }));
     expect(onJoin).toHaveBeenCalledWith("ABC123", "Alice");
+  });
+
+  it("announces error messages to assistive tech via role=alert", () => {
+    render(<RoomCodeEntry {...baseProps} error="Room not found" user={{ displayName: "Alice" }} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Room not found");
   });
 });

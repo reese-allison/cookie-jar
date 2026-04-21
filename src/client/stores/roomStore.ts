@@ -24,7 +24,6 @@ interface RoomStore {
   removeMember: (memberId: string) => void;
   setCursor: (cursor: CursorPosition) => void;
   removeCursor: (userId: string) => void;
-  setLocked: (locked: boolean) => void;
   reset: () => void;
 }
 
@@ -49,12 +48,14 @@ export const useRoomStore = create<RoomStore>((set) => ({
   addMember: (member) =>
     set((state) => {
       if (!state.room) return state;
-      return {
-        room: {
-          ...state.room,
-          members: [...state.room.members, member],
-        },
-      };
+      // Upsert by id so a duplicate room:member_joined (e.g. a reconnect race
+      // emits twice) doesn't render the same person twice in the roster.
+      const existingIdx = state.room.members.findIndex((m) => m.id === member.id);
+      const members =
+        existingIdx === -1
+          ? [...state.room.members, member]
+          : state.room.members.map((m, i) => (i === existingIdx ? member : m));
+      return { room: { ...state.room, members } };
     }),
 
   removeMember: (memberId) =>
@@ -83,17 +84,6 @@ export const useRoomStore = create<RoomStore>((set) => ({
       const cursors = new Map(state.cursors);
       cursors.delete(userId);
       return { cursors };
-    }),
-
-  setLocked: (locked) =>
-    set((state) => {
-      if (!state.room) return state;
-      return {
-        room: {
-          ...state.room,
-          state: locked ? "locked" : "open",
-        },
-      };
     }),
 
   reset: () => set({ ...initialState, cursors: new Map() }),

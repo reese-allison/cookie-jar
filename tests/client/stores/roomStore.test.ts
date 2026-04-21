@@ -67,15 +67,8 @@ describe("roomStore", () => {
     expect(useRoomStore.getState().cursors.has("user-1")).toBe(false);
   });
 
-  it("toggles lock state", () => {
-    useRoomStore.getState().setRoom(TEST_ROOM);
-
-    useRoomStore.getState().setLocked(true);
-    expect(useRoomStore.getState().room?.state).toBe("locked");
-
-    useRoomStore.getState().setLocked(false);
-    expect(useRoomStore.getState().room?.state).toBe("open");
-  });
+  // Lock state moved to jarConfig.locked — see noteStore + JarSettingsDrawer.
+  // There's nothing lock-related on the roomStore anymore.
 
   it("resets to initial state", () => {
     useRoomStore.getState().setRoom(TEST_ROOM);

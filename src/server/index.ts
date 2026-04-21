@@ -16,6 +16,7 @@ import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
 import { createUploadRouter } from "./routes/uploads";
 import { createShutdownHandler } from "./shutdown";
+import { setSocketServer } from "./socket/broadcaster";
 import { buildSocketServer } from "./socket/server";
 import { buildStorageFromEnv } from "./storage";
 
@@ -49,7 +50,8 @@ app.use("/uploads", buildUploadsStatic("public/uploads"));
 app.use("/sounds", buildSoundsStatic("public/sounds"));
 
 // Socket.io — keep the stop() so shutdown closes the adapter's Redis clients.
-const { io, stop: stopSocketServer } = buildSocketServer(httpServer);
+const { io, deps: socketDeps, stop: stopSocketServer } = buildSocketServer(httpServer);
+setSocketServer(io, socketDeps.sealedNotesStore);
 
 // Shared Redis client for health checks + rate-limit store. Keeps rate limits
 // cluster-wide correct once we run more than one pod.

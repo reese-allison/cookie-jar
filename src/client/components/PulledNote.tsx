@@ -4,6 +4,7 @@ import { memo } from "react";
 interface PulledNoteProps {
   note: Note;
   showPulledBy?: boolean;
+  showAuthors?: boolean;
   /** When false, the Discard button is hidden (e.g. the room is locked). */
   canDiscard?: boolean;
   onDiscard: (noteId: string) => void;
@@ -16,6 +17,7 @@ interface PulledNoteProps {
 export const PulledNote = memo(function PulledNote({
   note,
   showPulledBy,
+  showAuthors,
   canDiscard = true,
   onDiscard,
   onReturn,
@@ -27,6 +29,9 @@ export const PulledNote = memo(function PulledNote({
         <a className="pulled-note__url" href={note.url} target="_blank" rel="noopener noreferrer">
           {note.url}
         </a>
+      )}
+      {showAuthors && note.authorDisplayName && (
+        <p className="pulled-note__author">Written by {note.authorDisplayName}</p>
       )}
       {showPulledBy && note.pulledBy && (
         <p className="pulled-note__pulled-by">Pulled by {note.pulledBy}</p>

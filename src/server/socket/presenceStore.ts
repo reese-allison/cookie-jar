@@ -1,7 +1,9 @@
 import type { RoomMember } from "@shared/types";
 import type { Redis } from "ioredis";
 
-export type AddMemberResult = { ok: true; members: RoomMember[] } | { ok: false; reason: "full" };
+export type AddMemberResult =
+  | { ok: true; members: RoomMember[]; removed: string[] }
+  | { ok: false; reason: "full" };
 
 export interface PresenceStore {
   /** Add or overwrite a member in the room. */
@@ -19,6 +21,13 @@ export interface PresenceStore {
   ): Promise<AddMemberResult>;
   /** Remove a member. No-op if absent. */
   removeMember(roomId: string, memberId: string): Promise<void>;
+  /**
+   * Remove every entry in the room whose socketId isn't in `liveIds`. Returns
+   * the ids that were removed. Used to reap "ghost" presence rows left behind
+   * by pod crashes, pre-userId schema migrations, or reconnect storms that
+   * outran the kick-prior logic.
+   */
+  reconcile(roomId: string, liveIds: Set<string>): Promise<string[]>;
   /** Full list of members for the room (unordered). */
   getMembers(roomId: string): Promise<RoomMember[]>;
   /** Number of members currently in the room. */
@@ -45,34 +54,57 @@ function key(roomId: string): string {
  * the same hash) using cjson, compares the relevant cap, and inserts in the
  * same RedisScript execution — so the check is trivially consistent.
  *
- * ARGV: [role, maxParticipants, maxViewers, memberId, memberJson, ttlSeconds]
- * Returns: 1 on insert, 0 if role's cap is already met.
+ * When `userId` is non-empty, any existing entries for that same userId are
+ * removed before counting *and* inserting. That makes the script idempotent
+ * across reconnect storms: if a flaky connection cycles and the old socket's
+ * kick hasn't landed yet, we still end up with exactly one presence entry
+ * per (room, userId).
+ *
+ * ARGV: [role, maxParticipants, maxViewers, memberId, memberJson, ttlSeconds, userId]
+ * Returns: { insertedFlag, swept_id1, swept_id2, ... } where insertedFlag is
+ * "1" on insert or "0" if the role's cap is already met. The swept ids let
+ * the caller emit room:member_left for stale entries we dropped.
  */
 const ADD_IF_UNDER_CAP_LUA = `
 local members = redis.call('HVALS', KEYS[1])
 local role = ARGV[1]
 local maxP = tonumber(ARGV[2])
 local maxV = tonumber(ARGV[3])
+local newMemberId = ARGV[4]
+local ourUserId = ARGV[7]
 local pcount = 0
 local vcount = 0
+local toRemove = {}
 for _, raw in ipairs(members) do
   local ok, obj = pcall(cjson.decode, raw)
   if ok and type(obj) == 'table' then
-    if obj.role == 'viewer' then
-      vcount = vcount + 1
+    if ourUserId ~= '' and obj.userId == ourUserId and obj.id ~= newMemberId then
+      -- Stale entry for the same user — drop it instead of counting.
+      table.insert(toRemove, obj.id)
     else
-      pcount = pcount + 1
+      if obj.role == 'viewer' then
+        vcount = vcount + 1
+      else
+        pcount = pcount + 1
+      end
     end
   end
 end
 if role == 'viewer' then
-  if vcount >= maxV then return 0 end
+  if vcount >= maxV then return {'0'} end
 else
-  if pcount >= maxP then return 0 end
+  if pcount >= maxP then return {'0'} end
+end
+for _, oid in ipairs(toRemove) do
+  redis.call('HDEL', KEYS[1], oid)
 end
 redis.call('HSET', KEYS[1], ARGV[4], ARGV[5])
 redis.call('EXPIRE', KEYS[1], ARGV[6])
-return 1
+local result = {'1'}
+for _, oid in ipairs(toRemove) do
+  table.insert(result, oid)
+end
+return result
 `;
 
 const registered = new WeakSet<Redis>();
@@ -92,7 +124,8 @@ type WithAddCommand = Redis & {
     memberId: string,
     memberJson: string,
     ttlSeconds: string,
-  ): Promise<number>;
+    userId: string,
+  ): Promise<string[]>;
 };
 
 /**
@@ -119,7 +152,7 @@ export function createPresenceStore(
     },
 
     async addMemberIfUnderCap(roomId, member, maxParticipants, maxViewers) {
-      const inserted = await client[COMMAND_NAME](
+      const result = await client[COMMAND_NAME](
         key(roomId),
         member.role,
         String(maxParticipants),
@@ -127,17 +160,30 @@ export function createPresenceStore(
         member.id,
         JSON.stringify(member),
         String(ttlSeconds),
+        member.userId ?? "",
       );
-      if (inserted !== 1) return { ok: false, reason: "full" };
+      const [flag, ...removed] = result;
+      if (flag !== "1") return { ok: false, reason: "full" };
       // Fetch the updated roster so the caller can emit room:state without
       // a second round-trip.
       const raw = await redis.hgetall(key(roomId));
       const members = Object.values(raw).map((s) => JSON.parse(s) as RoomMember);
-      return { ok: true, members };
+      return { ok: true, members, removed };
     },
 
     async removeMember(roomId, memberId) {
       await redis.hdel(key(roomId), memberId);
+    },
+
+    async reconcile(roomId, liveIds) {
+      const k = key(roomId);
+      const raw = await redis.hgetall(k);
+      const toRemove: string[] = [];
+      for (const [id] of Object.entries(raw)) {
+        if (!liveIds.has(id)) toRemove.push(id);
+      }
+      if (toRemove.length > 0) await redis.hdel(k, ...toRemove);
+      return toRemove;
     },
 
     async getMembers(roomId) {

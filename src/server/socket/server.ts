@@ -20,6 +20,7 @@ import { registerRoomHandlers } from "./roomHandler";
 import { createRoomStateCache } from "./roomStateCache";
 import { createSealedNotesStore } from "./sealedNotesStore";
 import { startSessionExpiryChecker } from "./sessionExpiryChecker";
+import { closeZombieRooms } from "./zombieRoomSweep";
 
 export type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
@@ -27,6 +28,7 @@ const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
 
 export interface SocketServer {
   io: TypedServer;
+  deps: SocketDeps;
   stop(): Promise<void>;
 }
 
@@ -100,12 +102,12 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     sock.disconnect();
   });
 
-  // Cross-pod cache invalidation — a lock/unlock or jar:refresh on any pod
-  // drops the matching entry here, so remote changes don't serve stale reads
-  // for up to 5s.
+  // Cross-pod cache invalidation — a jar:refresh on any pod drops the
+  // matching entry here so remote changes don't serve stale config for up to
+  // 5s. Only "jar" scope is in use now; the "room" scope existed for the old
+  // room:lock/unlock path which moved into jarConfig.
   cacheBus.onInvalidate(({ scope, id }) => {
-    if (scope === "room") roomStateCache.invalidateRoom(id);
-    else if (scope === "jar") roomStateCache.invalidateJar(id);
+    if (scope === "jar") roomStateCache.invalidateJar(id);
   });
 
   // Per-IP connection cap — runs before auth so a flood can't even reach the
@@ -121,16 +123,33 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     const authData = (socket.data as SocketAuthData) ?? { user: null };
     const ctx = createSocketContext(authData);
     registerRoomHandlers(io, socket, ctx, deps, idleTimeouts);
-    registerNoteHandlers(io, socket, ctx, deps);
+    registerNoteHandlers(io, socket, ctx, deps, idleTimeouts);
     socket.on("disconnect", () => connectionLimiter.release(socket));
   });
 
   // Periodic check for expired sessions on long-lived sockets.
   const sessionChecker = startSessionExpiryChecker({ io, logger });
 
+  // One-shot sweep for zombie rooms — open in the DB, empty in Redis. Mostly
+  // catches pre-`close-on-last-leave` legacy rows on the first deploy after
+  // the fix; ongoing it covers the rare crash-mid-session case. Delayed so a
+  // reconnecting client's presence write lands first. Skip in tests so the
+  // setTimeout doesn't keep vitest hanging open.
+  let zombieSweepHandle: ReturnType<typeof setTimeout> | null = null;
+  if (process.env.NODE_ENV !== "test") {
+    zombieSweepHandle = setTimeout(() => {
+      closeZombieRooms(pool, deps.presenceStore).catch((err) => {
+        logger.error({ err }, "zombie room sweep failed");
+      });
+    }, 30_000);
+    zombieSweepHandle.unref?.();
+  }
+
   return {
     io,
+    deps,
     async stop() {
+      if (zombieSweepHandle) clearTimeout(zombieSweepHandle);
       sessionChecker.stop();
       roomStateCache.stop();
       await kickBus.close();

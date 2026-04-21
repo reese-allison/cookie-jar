@@ -13,7 +13,7 @@ export function SoundToggle() {
   return (
     <button
       type="button"
-      className="sound-toggle"
+      className="btn--icon sound-toggle"
       onClick={toggle}
       aria-label={enabled ? "Mute sounds" : "Unmute sounds"}
       aria-pressed={!enabled}

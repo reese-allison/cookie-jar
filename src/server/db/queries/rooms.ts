@@ -77,3 +77,11 @@ export async function updateRoomState(
   );
   return rows.length > 0 ? rowToRoom(rows[0]) : null;
 }
+
+/** Active (non-closed) rooms for a jar. Used on delete to disconnect live sockets. */
+export async function listActiveRoomsForJar(pool: pg.Pool, jarId: string): Promise<RoomRow[]> {
+  const { rows } = await pool.query("SELECT * FROM rooms WHERE jar_id = $1 AND state != 'closed'", [
+    jarId,
+  ]);
+  return rows.map(rowToRoom);
+}

@@ -11,6 +11,27 @@ export interface SealedNotesStore {
    * or nobody's at the threshold yet).
    */
   revealIfReady(roomId: string, threshold: number): Promise<Note[]>;
+  /**
+   * Drain the buffer unconditionally (returns all entries + clears). Used when
+   * the owner flips the jar out of sealed mode mid-batch — otherwise the
+   * queued notes would never surface.
+   */
+  drain(roomId: string): Promise<Note[]>;
+  /**
+   * Remove a specific note id from the buffer. Used when a note is discarded
+   * before the reveal threshold fires — otherwise the discarded note would
+   * materialize on the table when the buffer eventually reveals.
+   */
+  remove(roomId: string, noteId: string): Promise<void>;
+  /**
+   * Replace the buffered snapshot for a given note id in-place. Used when the
+   * owner edits a pulled note's text via REST — the buffer holds the old
+   * serialized blob, so without this the note would reveal with stale text.
+   * Silent no-op when the note isn't in the buffer.
+   */
+  updateInBuffer(roomId: string, note: Note): Promise<void>;
+  /** Current buffer length. Used to decide whether to auto-reveal on config changes. */
+  length(roomId: string): Promise<number>;
   /** Unconditionally clear the buffer. Used on room close / owner clear. */
   clear(roomId: string): Promise<void>;
 }
@@ -64,15 +85,80 @@ export function createSealedNotesStore(
   return {
     async push(roomId, note) {
       const k = key(roomId);
-      const newLen = await redis.rpush(k, JSON.stringify(note));
-      // Best-effort TTL refresh; if it fails we'll just have a longer-lived key.
-      await redis.expire(k, ttlSeconds);
-      return newLen;
+      // Pipeline so a crash between rpush and expire can't leave a TTL-less
+      // key sitting in Redis forever. Both commands ship in one round-trip.
+      const results = await redis
+        .multi()
+        .rpush(k, JSON.stringify(note))
+        .expire(k, ttlSeconds)
+        .exec();
+      const rpushResult = results?.[0];
+      if (!rpushResult || rpushResult[0]) {
+        // Either the pipeline didn't return (connection issue) or rpush itself
+        // errored. Fall through with a best-effort length query.
+        return redis.llen(k);
+      }
+      return rpushResult[1] as number;
     },
 
     async revealIfReady(roomId, threshold) {
       const raw = await client[COMMAND_NAME](key(roomId), String(threshold));
       return raw.map((s) => JSON.parse(s) as Note);
+    },
+
+    async drain(roomId) {
+      const k = key(roomId);
+      // LRANGE + DEL is atomic-enough for our purposes: a concurrent push on
+      // another pod would land in a *new* key (we just deleted), so we might
+      // return a buffer of 3 and that concurrent push starts fresh at 1.
+      // Acceptable — the caller is in the jar:refresh path which only runs
+      // from the owner and is rate-limited to 1 per 3s.
+      const raw = await redis.lrange(k, 0, -1);
+      if (raw.length > 0) await redis.del(k);
+      return raw.map((s) => JSON.parse(s) as Note);
+    },
+
+    async remove(roomId, noteId) {
+      const k = key(roomId);
+      const raw = await redis.lrange(k, 0, -1);
+      if (raw.length === 0) return;
+      // LREM needs the exact serialized value to match. Find the entry whose
+      // parsed id matches and remove that specific JSON string.
+      for (const entry of raw) {
+        try {
+          const parsed = JSON.parse(entry) as Note;
+          if (parsed.id === noteId) {
+            await redis.lrem(k, 1, entry);
+            return;
+          }
+        } catch {
+          // Skip malformed entries — they'll be drained on next reveal.
+        }
+      }
+    },
+
+    async updateInBuffer(roomId, note) {
+      const k = key(roomId);
+      const raw = await redis.lrange(k, 0, -1);
+      if (raw.length === 0) return;
+      for (let i = 0; i < raw.length; i++) {
+        try {
+          const parsed = JSON.parse(raw[i]) as Note;
+          if (parsed.id === note.id) {
+            // LSET by index is O(1); no atomic LREM+RPUSH dance needed, which
+            // also preserves the note's queue position — important so the
+            // reveal still fires on the same threshold we were heading for.
+            await redis.lset(k, i, JSON.stringify(note));
+            return;
+          }
+        } catch {
+          // Skip malformed; a future sweep will drop them.
+        }
+      }
+    },
+
+    async length(roomId) {
+      return redis.llen(key(roomId));
     },
 
     async clear(roomId) {

@@ -10,6 +10,7 @@ import { PulledNote } from "./PulledNote";
 interface DraggablePulledNoteProps {
   note: Note;
   showPulledBy?: boolean;
+  showAuthors?: boolean;
   /** When false, Discard is hidden and drag-to-discard is disabled. */
   canDiscard?: boolean;
   onDiscard: (noteId: string) => void;
@@ -29,6 +30,7 @@ interface DraggablePulledNoteProps {
 export const DraggablePulledNote = memo(function DraggablePulledNote({
   note,
   showPulledBy,
+  showAuthors,
   canDiscard = true,
   onDiscard,
   onReturn,
@@ -98,6 +100,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
         <PulledNote
           note={note}
           showPulledBy={showPulledBy}
+          showAuthors={showAuthors}
           canDiscard={canDiscard}
           onDiscard={onDiscard}
           onReturn={onReturn}
@@ -122,6 +125,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
       <PulledNote
         note={note}
         showPulledBy={showPulledBy}
+        showAuthors={showAuthors}
         canDiscard={canDiscard}
         onDiscard={onDiscard}
         onReturn={onReturn}

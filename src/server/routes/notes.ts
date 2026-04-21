@@ -2,6 +2,7 @@ import { MAX_BULK_IMPORT, MAX_NOTES_PER_JAR } from "@shared/constants";
 import type { Jar, NoteState } from "@shared/types";
 import { isValidNoteText, isValidUrl, parseNoteInput } from "@shared/validation";
 import { type Response, Router } from "express";
+import { canAccessJar } from "../access";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as noteQueries from "../db/queries/notes";
@@ -12,6 +13,13 @@ import {
   getUser,
   requireAuth,
 } from "../middleware/requireAuth";
+import {
+  broadcastJarNoteState,
+  broadcastNoteUpdated,
+  removeFromSealedBuffers,
+  updateSealedBuffers,
+} from "../socket/broadcaster";
+import { fireAndForget } from "../socket/fireAndForget";
 
 export const noteRouter = Router();
 
@@ -26,13 +34,26 @@ function isNoteState(v: unknown): v is NoteState {
 }
 
 /**
- * Fetch a jar and enforce that `viewerId` is allowed to read it. Anyone can
- * read a public or template jar; otherwise only the owner. Returns the jar on
- * success or null with an HTTP status already written to `res`.
+ * Lock check for REST mutations that "add or remove" from the visible pool.
+ * Text edits and non-destructive state flips don't need this. Writes the
+ * response and returns false when locked.
+ */
+function assertUnlocked(jar: Jar, res: Response): boolean {
+  if (jar.config?.locked) {
+    res.status(409).json({ error: "Jar is locked — unlock in settings first" });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Fetch a jar and enforce access via canAccessJar (owner, public, template,
+ * or allowlist). Returns the jar on success or null with an HTTP status
+ * already written to `res`.
  */
 async function loadReadableJar(
   jarId: string,
-  viewerId: string | null,
+  viewer: { userId: string | null; email: string | null },
   res: Response,
 ): Promise<Jar | null> {
   const jar = await jarQueries.getJarById(pool, jarId);
@@ -40,7 +61,7 @@ async function loadReadableJar(
     res.status(404).json({ error: "Jar not found" });
     return null;
   }
-  if (!jar.isPublic && !jar.isTemplate && jar.ownerId !== viewerId) {
+  if (!canAccessJar(jar, viewer)) {
     res.status(403).json({ error: "Not authorized to view this jar" });
     return null;
   }
@@ -70,6 +91,7 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       res.status(403).json({ error: "Only the jar owner can add notes via REST" });
       return;
     }
+    if (!assertUnlocked(jar, res)) return;
     const existing = await noteQueries.countNotesByState(pool, jarId, "in_jar");
     if (existing >= MAX_NOTES_PER_JAR) {
       res.status(400).json({ error: `Jar is full (${MAX_NOTES_PER_JAR} notes max)` });
@@ -83,6 +105,9 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       authorId: getUser(req).id,
     });
     res.status(201).json(note);
+    // Push the new inJarCount to every live room so peers see the add without
+    // waiting for a jar:refresh.
+    fireAndForget(broadcastJarNoteState(jarId), "broadcastJarNoteState(create)");
   } catch (err) {
     logger.error({ err }, "POST /api/notes failed");
     res.status(500).json({ error: "Failed to create note" });
@@ -98,7 +123,11 @@ noteRouter.get("/", attachUser, async (req: AuthenticatedRequest, res) => {
       res.status(400).json({ error: "jarId query parameter is required" });
       return;
     }
-    const jar = await loadReadableJar(jarId, req.user?.id ?? null, res);
+    const jar = await loadReadableJar(
+      jarId,
+      { userId: req.user?.id ?? null, email: req.user?.email ?? null },
+      res,
+    );
     if (!jar) return;
     const rawState = req.query.state;
     const state = isNoteState(rawState) ? rawState : undefined;
@@ -138,6 +167,17 @@ noteRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => 
       url: url === "" ? undefined : url,
     });
     res.json(updated);
+    // Push the edit to every live room for this jar so peers don't keep
+    // rendering the old text until a jar:refresh. Fire-and-forget — a
+    // broadcast failure shouldn't fail the PATCH.
+    if (updated) {
+      fireAndForget(broadcastNoteUpdated(updated), "broadcastNoteUpdated");
+      // If the note is in any active room's sealed buffer, replace the
+      // buffered snapshot so the eventual reveal shows the new text.
+      if (updated.state === "pulled") {
+        fireAndForget(updateSealedBuffers(updated), "updateSealedBuffers(edit)");
+      }
+    }
   } catch (err) {
     logger.error({ err }, "PATCH /api/notes/:id failed");
     res.status(500).json({ error: "Failed to update note" });
@@ -163,8 +203,25 @@ noteRouter.patch("/:id/state", requireAuth, async (req: AuthenticatedRequest, re
       res.status(403).json({ error: "Only the jar owner can change note state" });
       return;
     }
+    // Lock only blocks transitions that effectively add or discard (lock
+    // says "no additions, no discards"). Pulled↔in_jar swaps are curation.
+    if (state === "discarded" && !assertUnlocked(jar, res)) return;
     const updated = await noteQueries.updateNoteState(pool, noteId, state);
     res.json(updated);
+    // Peers need to see state flips (pulled → discarded etc.) live.
+    // broadcastNoteUpdated handles add/remove-from-pulled-list on the client.
+    if (updated) {
+      fireAndForget(broadcastNoteUpdated(updated), "broadcastNoteUpdated(state)");
+      // If the note left "pulled" state, scrub it from sealed buffers — even
+      // a state flip to in_jar/discarded would otherwise re-surface on the
+      // next reveal with the old "pulled" snapshot.
+      if (updated.state !== "pulled") {
+        fireAndForget(
+          removeFromSealedBuffers(updated.jarId, updated.id),
+          "removeFromSealedBuffers(state)",
+        );
+      }
+    }
   } catch (err) {
     logger.error({ err }, "PATCH /api/notes/:id/state failed");
     res.status(500).json({ error: "Failed to update note state" });
@@ -185,8 +242,21 @@ noteRouter.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res) =>
       res.status(403).json({ error: "Only the jar owner can delete notes" });
       return;
     }
+    if (!assertUnlocked(jar, res)) return;
     await noteQueries.deleteNote(pool, noteId);
     res.status(204).send();
+    // If the note was on the table, emit note:updated with a non-pulled state
+    // so clients drop it from pulledNotes (store.noteUpdated removes on
+    // non-pulled state). Also push the fresh count so the jar label updates.
+    if (note.state === "pulled") {
+      const ghost = { ...note, state: "discarded" as const };
+      fireAndForget(broadcastNoteUpdated(ghost), "broadcastNoteUpdated(delete)");
+    }
+    // Scrub the deleted note from every active room's sealed buffer — would
+    // otherwise materialize as a zombie on the next reveal since the buffer
+    // holds a JSON snapshot independent of the notes row.
+    fireAndForget(removeFromSealedBuffers(note.jarId, noteId), "removeFromSealedBuffers(delete)");
+    fireAndForget(broadcastJarNoteState(note.jarId), "broadcastJarNoteState(delete)");
   } catch (err) {
     logger.error({ err }, "DELETE /api/notes/:id failed");
     res.status(500).json({ error: "Failed to delete note" });
@@ -214,6 +284,7 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
       res.status(403).json({ error: "Only the jar owner can import notes" });
       return;
     }
+    if (!assertUnlocked(jar, res)) return;
     const validTexts = texts.filter(
       (t): t is string => typeof t === "string" && isValidNoteText(t),
     );
@@ -230,6 +301,9 @@ noteRouter.post("/bulk-import", requireAuth, async (req: AuthenticatedRequest, r
     const toImport = validTexts.slice(0, roomLeft);
     const count = await noteQueries.bulkCreateNotes(pool, jarId, toImport);
     res.status(201).json({ imported: count, skipped: validTexts.length - count });
+    // Push the new inJarCount to every live room for this jar so peers see
+    // the import without waiting for the owner to jar:refresh.
+    if (count > 0) fireAndForget(broadcastJarNoteState(jarId), "broadcastJarNoteState(bulk)");
   } catch (err) {
     logger.error({ err }, "POST /api/notes/bulk-import failed");
     res.status(500).json({ error: "Failed to import notes" });
@@ -245,7 +319,11 @@ noteRouter.get("/export", attachUser, async (req: AuthenticatedRequest, res) => 
       res.status(400).json({ error: "jarId query parameter is required" });
       return;
     }
-    const jar = await loadReadableJar(jarId, req.user?.id ?? null, res);
+    const jar = await loadReadableJar(
+      jarId,
+      { userId: req.user?.id ?? null, email: req.user?.email ?? null },
+      res,
+    );
     if (!jar) return;
     const notes = await noteQueries.listNotesByJar(pool, jarId);
 

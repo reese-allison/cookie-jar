@@ -157,7 +157,7 @@ Runtime config is read from `.env` (dev) or the platform's env (prod). Non-obvio
 |---|---|---|
 | `DATABASE_URL` | local compose | Postgres connection string |
 | `REDIS_URL` | `redis://localhost:6379` | Redis (adapter + state + rate limit + idle) |
-| `CLIENT_URL` | `http://localhost:5175` | CORS + OAuth trusted origin |
+| `CLIENT_URL` | `http://localhost:5173` | CORS + OAuth trusted origin (Vite default) |
 | `PORT` | `3001` | HTTP server port |
 | `NODE_ENV` | — | `production` enables strict mode: anon plugin off, logger NDJSON, `BETTER_AUTH_SECRET` required |
 | `BETTER_AUTH_SECRET` | dev-only | Session signing secret; required in prod |

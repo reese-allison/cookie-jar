@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { AuthButtons } from "./AuthButtons";
 import { CreateJar } from "./CreateJar";
 import { SegmentedControl } from "./SegmentedControl";
 import { TemplateBrowser } from "./TemplateBrowser";
@@ -89,23 +88,34 @@ export function RoomCodeEntry({
                 disabled={isJoining}
               />
             )}
-            <button type="submit" disabled={isJoining || !code.trim() || !displayName.trim()}>
+            <button
+              type="submit"
+              className="btn btn--hero"
+              disabled={isJoining || !code.trim() || !displayName.trim()}
+            >
               {isJoining ? "Joining..." : "Join Room"}
             </button>
           </form>
-          {error && <p className="error">{error}</p>}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
         </>
       ) : (
         <div className="room-code-entry__host">
           {!user && (
-            <div className="room-code-entry__auth">
-              <p className="room-code-entry__auth-note">Sign in to host your own jar</p>
-              <AuthButtons />
-            </div>
+            <p className="room-code-entry__auth-note">
+              Sign in from the top bar to host your own jar.
+            </p>
           )}
           {onCreateJar && <CreateJar onCreate={onCreateJar} isCreating={isCreating} />}
           {onCloneTemplate && <TemplateBrowser onClone={onCloneTemplate} isCloning={isCreating} />}
-          {error && <p className="error">{error}</p>}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
         </div>
       )}
     </div>

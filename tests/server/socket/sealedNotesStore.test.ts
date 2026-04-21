@@ -1,7 +1,7 @@
-import type { Note } from "@shared/types";
 import Redis from "ioredis";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createSealedNotesStore } from "../../../src/server/socket/sealedNotesStore";
+import type { Note } from "../../../src/shared/types";
 
 let redis: Redis;
 
@@ -85,5 +85,52 @@ describe("sealedNotesStore (Redis)", () => {
     await store.push("test-6", makeNote("A"));
     await store.clear("test-6");
     expect(await store.revealIfReady("test-6", 1)).toEqual([]);
+  });
+
+  it("remove drops a specific note without disturbing the rest", async () => {
+    const store = createSealedNotesStore(redis);
+    await store.push("test-7", makeNote("A"));
+    await store.push("test-7", makeNote("B"));
+    await store.push("test-7", makeNote("C"));
+    await store.remove("test-7", "note-B");
+    const revealed = await store.revealIfReady("test-7", 2);
+    expect(revealed.map((n) => n.text)).toEqual(["A", "C"]);
+  });
+
+  it("remove is a silent no-op when the note isn't buffered", async () => {
+    const store = createSealedNotesStore(redis);
+    await store.push("test-8", makeNote("A"));
+    await store.remove("test-8", "note-ghost");
+    expect(await store.length("test-8")).toBe(1);
+  });
+
+  it("updateInBuffer replaces the buffered snapshot in place", async () => {
+    const store = createSealedNotesStore(redis);
+    await store.push("test-9", makeNote("old-1"));
+    await store.push("test-9", makeNote("old-2"));
+    // Overwrite the text of the second buffered note with a fresh snapshot.
+    const edited: Note = { ...makeNote("new-2"), id: "note-old-2" };
+    await store.updateInBuffer("test-9", edited);
+    const revealed = await store.revealIfReady("test-9", 2);
+    expect(revealed.map((n) => n.text)).toEqual(["old-1", "new-2"]);
+  });
+
+  it("updateInBuffer preserves queue order — threshold still fires at the same count", async () => {
+    const store = createSealedNotesStore(redis);
+    await store.push("test-10", makeNote("A"));
+    await store.push("test-10", makeNote("B"));
+    await store.updateInBuffer("test-10", { ...makeNote("A-edited"), id: "note-A" });
+    // Still 2 in the buffer, reveals at threshold 2.
+    expect(await store.length("test-10")).toBe(2);
+    const revealed = await store.revealIfReady("test-10", 2);
+    expect(revealed).toHaveLength(2);
+    expect(revealed[0].text).toBe("A-edited");
+  });
+
+  it("updateInBuffer is a silent no-op when the note isn't buffered", async () => {
+    const store = createSealedNotesStore(redis);
+    await store.push("test-11", makeNote("A"));
+    await store.updateInBuffer("test-11", { ...makeNote("ghost"), id: "note-ghost" });
+    expect(await store.length("test-11")).toBe(1);
   });
 });

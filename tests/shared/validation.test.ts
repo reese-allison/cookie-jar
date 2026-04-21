@@ -175,6 +175,43 @@ describe("sanitizeJarConfig", () => {
   it("rejects non-boolean flags", () => {
     expect(sanitizeJarConfig({ showAuthors: "yes" })).toBeNull();
   });
+
+  it("accepts and normalizes allowedEmails (lowercase, dedupe)", () => {
+    const out = sanitizeJarConfig({
+      allowedEmails: ["A@example.com", "b@example.com", "a@EXAMPLE.com"],
+    });
+    expect(out).not.toBeNull();
+    const list = (out as { allowedEmails: string[] }).allowedEmails;
+    expect(list.sort()).toEqual(["a@example.com", "b@example.com"]);
+  });
+
+  it("rejects allowedEmails with a malformed entry", () => {
+    expect(sanitizeJarConfig({ allowedEmails: ["not-an-email"] })).toBeNull();
+    expect(sanitizeJarConfig({ allowedEmails: ["a@b"] })).toBeNull();
+  });
+
+  it("rejects allowedEmails over the 200-entry cap", () => {
+    const tooMany = Array.from({ length: 201 }, (_, i) => `u${i}@example.com`);
+    expect(sanitizeJarConfig({ allowedEmails: tooMany })).toBeNull();
+  });
+
+  it("accepts allowedUserIds when they're UUIDs", () => {
+    const uuids = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
+    const out = sanitizeJarConfig({ allowedUserIds: uuids });
+    expect(out).not.toBeNull();
+    expect((out as { allowedUserIds: string[] }).allowedUserIds.sort()).toEqual(uuids.sort());
+  });
+
+  it("rejects non-UUID allowedUserIds", () => {
+    expect(sanitizeJarConfig({ allowedUserIds: ["not-a-uuid"] })).toBeNull();
+    expect(sanitizeJarConfig({ allowedUserIds: [123] })).toBeNull();
+  });
+
+  it("accepts locked as a boolean, rejects anything else", () => {
+    expect(sanitizeJarConfig({ locked: true })).toEqual({ locked: true });
+    expect(sanitizeJarConfig({ locked: false })).toEqual({ locked: false });
+    expect(sanitizeJarConfig({ locked: "yes" })).toBeNull();
+  });
 });
 
 describe("parseNoteInput", () => {

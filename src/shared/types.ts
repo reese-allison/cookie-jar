@@ -12,7 +12,16 @@ export interface Note {
   style: NoteStyle;
   state: NoteState;
   authorId?: string;
+  /** Author's display name at write time. Populated via LEFT JOIN in queries. */
+  authorDisplayName?: string;
   pulledBy?: string;
+  /**
+   * Authed puller's user id. Set when the puller is signed in (OAuth or
+   * anonymous dev session). Used server-side to disambiguate private-mode
+   * filtering when two users share a display name. Anon pre-auth pulls and
+   * rows from before the column existed leave this undefined.
+   */
+  pulledByUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +30,12 @@ export interface Note {
 
 export type NoteVisibility = "open" | "sealed";
 export type PullVisibility = "shared" | "private";
+/**
+ * What happens to a member's pulled notes when they disconnect or leave the
+ * room. "return" flips them back to in_jar so someone else can pull them;
+ * "discard" marks them discarded so they're out of rotation.
+ */
+export type OnLeaveBehavior = "return" | "discard";
 
 /**
  * A jar's visual identity is two user-uploaded images (opened and closed states)
@@ -50,6 +65,28 @@ export interface JarConfig {
   sealedRevealCount: number;
   showAuthors: boolean;
   showPulledBy: boolean;
+  /**
+   * What to do with a member's pulled notes when they leave the room.
+   * Defaults to "return" server-side so the jar re-fills; "discard" is for
+   * games where leaving forfeits whatever you had on the table.
+   */
+  onLeaveBehavior: OnLeaveBehavior;
+  /**
+   * When true, `note:add` and `note:discard` are blocked for everyone
+   * (including the owner). `note:pull` and `note:return` stay allowed. Owner
+   * toggles from Jar Settings. Persists at the jar level — a fresh room for
+   * a locked jar starts locked.
+   */
+  locked?: boolean;
+  /**
+   * Access restriction. If either list is non-empty, the jar is private to
+   * the owner + anyone whose user id appears in `allowedUserIds` or whose
+   * authenticated email (case-insensitive) appears in `allowedEmails`.
+   * An empty or missing list means the default access rules apply
+   * (isPublic / isTemplate unchanged).
+   */
+  allowedUserIds?: string[];
+  allowedEmails?: string[];
 }
 
 export interface Jar {
@@ -72,6 +109,8 @@ export type UserRole = "owner" | "contributor" | "viewer";
 export interface RoomMember {
   id: string;
   displayName: string;
+  /** better-auth user id when signed in; undefined for truly anonymous sockets. */
+  userId?: string;
   role: UserRole;
   color: string;
   connectedAt: string;
@@ -112,23 +151,28 @@ export interface NoteStatePayload {
   // Omitted when the update is count-only (e.g., private-mode pulls by others).
   // Clients must preserve their existing pulledNotes when absent.
   pulledNotes?: Note[];
-  pullCounts?: Record<string, number>;
+  jarName?: string;
   jarConfig?: JarConfig;
   jarAppearance?: JarAppearance;
+  /** Sealed buffer length, so joiners and post-refresh clients can render "N/M sealed" accurately. */
+  sealedCount?: number;
+  sealedRevealAt?: number;
+  /** Whether the viewer (a non-owner) has this jar starred. Sent on join; omitted on deltas. */
+  isStarred?: boolean;
 }
 
 export interface ServerToClientEvents {
   "room:state": (room: Room) => void;
   "room:member_joined": (member: RoomMember) => void;
   "room:member_left": (memberId: string) => void;
-  "room:locked": () => void;
-  "room:unlocked": () => void;
   "cursor:moved": (cursor: CursorPosition) => void;
   "note:state": (state: NoteStatePayload) => void;
   "note:added": (note: Note, inJarCount: number) => void;
   "note:pulled": (note: Note, pulledBy: string) => void;
   "note:discarded": (noteId: string) => void;
   "note:returned": (noteId: string, inJarCount: number) => void;
+  /** Single-note upsert. Clients merge by id rather than replacing the pulled list. */
+  "note:updated": (note: Note) => void;
   "pull:rejected": (reason: string) => void;
   "note:sealed": (
     pulledBy: string,
@@ -157,8 +201,6 @@ export interface PullHistoryEntry {
 export interface ClientToServerEvents {
   "room:join": (code: string, displayName: string) => void;
   "room:leave": () => void;
-  "room:lock": () => void;
-  "room:unlock": () => void;
   "cursor:move": (position: Omit<CursorPosition, "userId">) => void;
   "note:add": (note: Pick<Note, "text" | "url" | "style">) => void;
   "note:pull": () => void;
@@ -169,4 +211,8 @@ export interface ClientToServerEvents {
   "history:get": () => void;
   "history:clear": () => void;
   "jar:refresh": () => void;
+  /** Owner-only: return every currently pulled note to the jar. */
+  "note:returnAll": () => void;
+  /** Owner-only: discard every currently pulled note. */
+  "note:discardAll": () => void;
 }

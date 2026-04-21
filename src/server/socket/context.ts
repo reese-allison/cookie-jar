@@ -8,6 +8,8 @@ export interface SocketContext {
   memberId: string | null;
   displayName: string | null;
   userId: string | null;
+  /** Verified email from the session. Needed to evaluate jar allowlists. */
+  email: string | null;
   isAuthenticated: boolean;
   role: UserRole | null;
 }
@@ -20,6 +22,7 @@ export function createSocketContext(authData: SocketAuthData): SocketContext {
     memberId: null,
     displayName: authData.user?.displayName ?? null,
     userId: authData.user?.id ?? null,
+    email: authData.user?.email ?? null,
     isAuthenticated: authData.user !== null,
     role: null,
   };

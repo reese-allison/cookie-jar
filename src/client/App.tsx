@@ -1,13 +1,15 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AuthHeader } from "./components/AuthHeader";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { ErrorToast } from "./components/ErrorToast";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { RoomView } from "./components/RoomView";
+import { SignInModal } from "./components/SignInModal";
 import { useJarActions } from "./hooks/useJarActions";
-import { useJarName } from "./hooks/useJarName";
 import { useSocket } from "./hooks/useSocket";
 import { useSession } from "./lib/auth-client";
+import { starJar, unstarJar } from "./lib/myJarsApi";
 import { useNoteStore } from "./stores/noteStore";
 import { useRoomStore } from "./stores/roomStore";
 
@@ -30,11 +32,39 @@ function App() {
   // Regression guard: tests/client/App.socketLifetime.test.tsx.
   const socketApi = useSocket();
 
-  if (!room) return <LandingScreen user={user} socketApi={socketApi} />;
-  return <InRoomScreen user={user} session={session} socketApi={socketApi} />;
+  // Sign-in modal lives at the App root so it can be opened from any surface
+  // (TopBar, viewer notice in a room) without context gymnastics.
+  const [signInOpen, setSignInOpen] = useState(false);
+  const openSignIn = useCallback(() => setSignInOpen(true), []);
+  const closeSignIn = useCallback(() => setSignInOpen(false), []);
+
+  return (
+    <>
+      <ErrorToast />
+      {room ? (
+        <InRoomScreen
+          user={user}
+          session={session}
+          socketApi={socketApi}
+          onRequestSignIn={openSignIn}
+        />
+      ) : (
+        <LandingScreen user={user} socketApi={socketApi} onRequestSignIn={openSignIn} />
+      )}
+      <SignInModal open={signInOpen} onClose={closeSignIn} />
+    </>
+  );
 }
 
-function LandingScreen({ user, socketApi }: { user: SessionUser; socketApi: SocketApi }) {
+function LandingScreen({
+  user,
+  socketApi,
+  onRequestSignIn,
+}: {
+  user: SessionUser;
+  socketApi: SocketApi;
+  onRequestSignIn: () => void;
+}) {
   const isJoining = useRoomStore((s) => s.isJoining);
   const error = useRoomStore((s) => s.error);
   const setError = useRoomStore((s) => s.setError);
@@ -54,9 +84,12 @@ function LandingScreen({ user, socketApi }: { user: SessionUser; socketApi: Sock
 
   return (
     <main>
-      {user && (
-        <AuthHeader user={user} onJoinRoom={joinExistingRoom} onCreateRoom={openRoomForJar} />
-      )}
+      <AuthHeader
+        user={user}
+        onJoinRoom={joinExistingRoom}
+        onCreateRoom={openRoomForJar}
+        onRequestSignIn={onRequestSignIn}
+      />
       <RoomCodeEntry
         onJoin={joinRoom}
         onCreateJar={user ? createJarAndJoin : undefined}
@@ -75,10 +108,12 @@ function InRoomScreen({
   user,
   session,
   socketApi,
+  onRequestSignIn,
 }: {
   user: SessionUser;
   session: ReturnType<typeof useSession>["data"];
   socketApi: SocketApi;
+  onRequestSignIn: () => void;
 }) {
   const room = useRoomStore((s) => s.room);
   const isConnected = useRoomStore((s) => s.isConnected);
@@ -90,26 +125,28 @@ function InRoomScreen({
   const isAdding = useNoteStore((s) => s.isAdding);
   const jarConfig = useNoteStore((s) => s.jarConfig);
   const jarAppearance = useNoteStore((s) => s.jarAppearance);
+  const jarName = useNoteStore((s) => s.jarName);
   const history = useNoteStore((s) => s.history);
   const sealedCount = useNoteStore((s) => s.sealedCount);
   const sealedRevealAt = useNoteStore((s) => s.sealedRevealAt);
+  const isStarred = useNoteStore((s) => s.isStarred);
+  const setStarred = useNoteStore((s) => s.setStarred);
   const {
     joinRoom,
     leaveRoom,
     moveCursor,
-    lockRoom,
-    unlockRoom,
     addNote,
     pullNote,
     discardNote,
     returnNote,
+    returnAllNotes,
+    discardAllNotes,
     getHistory,
     clearHistory,
     dragNote,
     dragNoteEnd,
     refreshJar,
   } = socketApi;
-  const jarName = useJarName(room?.jarId);
   const displayName = user?.displayName ?? "Host";
 
   const { openRoomForJar } = useJarActions({ displayName, joinRoom, setError });
@@ -118,6 +155,20 @@ function InRoomScreen({
     (code: string) => joinRoom(code, displayName),
     [joinRoom, displayName],
   );
+
+  const handleToggleStar = useCallback(async () => {
+    const jarId = room?.jarId;
+    if (!jarId) return;
+    // Optimistic flip so the star fills immediately. On failure, revert.
+    const nextStarred = !isStarred;
+    setStarred(nextStarred);
+    try {
+      if (nextStarred) await starJar(jarId);
+      else await unstarJar(jarId);
+    } catch {
+      setStarred(!nextStarred);
+    }
+  }, [room?.jarId, isStarred, setStarred]);
 
   // Memoized: recomputes only when identity-relevant inputs change, not on
   // every cursor packet. `room?.members.find` is O(n) so worth caching.
@@ -134,9 +185,13 @@ function InRoomScreen({
   return (
     <main>
       <ConnectionStatus isConnected={isConnected} hasRoom={true} />
-      {user && (
-        <AuthHeader user={user} onJoinRoom={joinExistingRoom} onCreateRoom={openRoomForJar} />
-      )}
+      <AuthHeader
+        user={user}
+        onJoinRoom={joinExistingRoom}
+        onCreateRoom={openRoomForJar}
+        onRequestSignIn={onRequestSignIn}
+        onLeaveRoom={leaveRoom}
+      />
       <RoomView
         room={room}
         cursors={cursors}
@@ -146,25 +201,29 @@ function InRoomScreen({
         isViewer={isViewer}
         isOwner={isOwner ?? false}
         showPulledBy={jarConfig?.showPulledBy ?? false}
+        showAuthors={jarConfig?.showAuthors ?? false}
         jarAppearance={jarAppearance ?? undefined}
         jarConfig={jarConfig ?? undefined}
-        jarName={jarName}
+        jarName={jarName ?? undefined}
         sealedCount={sealedCount}
         sealedRevealAt={sealedRevealAt}
         onMouseMove={moveCursor}
-        onLock={lockRoom}
-        onUnlock={unlockRoom}
         onLeave={leaveRoom}
         onJarRefresh={refreshJar}
         onAddNote={addNote}
         onPull={pullNote}
         onDiscard={discardNote}
         onReturn={returnNote}
+        onReturnAll={isOwner ? returnAllNotes : undefined}
+        onDiscardAll={isOwner ? discardAllNotes : undefined}
         onDragNote={dragNote}
         onDragNoteEnd={dragNoteEnd}
         history={history}
         onGetHistory={getHistory}
         onClearHistory={isOwner ? clearHistory : undefined}
+        onSignIn={onRequestSignIn}
+        isStarred={isStarred}
+        onToggleStar={isOwner ? undefined : handleToggleStar}
       />
     </main>
   );

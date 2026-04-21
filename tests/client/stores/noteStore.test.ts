@@ -23,14 +23,14 @@ beforeEach(() => {
 describe("noteStore", () => {
   it("sets initial note state on room join", () => {
     const pulled = [makeNote({ id: "n1" }), makeNote({ id: "n2" })];
-    useNoteStore.getState().setNoteState(5, pulled);
+    useNoteStore.getState().setNoteState({ inJarCount: 5, pulledNotes: pulled });
 
     expect(useNoteStore.getState().inJarCount).toBe(5);
     expect(useNoteStore.getState().pulledNotes).toHaveLength(2);
   });
 
   it("increments count when a note is added", () => {
-    useNoteStore.getState().setNoteState(3, []);
+    useNoteStore.getState().setNoteState({ inJarCount: 3, pulledNotes: [] });
     useNoteStore.getState().noteAdded(makeNote({ state: "in_jar" }), 4);
 
     expect(useNoteStore.getState().inJarCount).toBe(4);
@@ -38,7 +38,7 @@ describe("noteStore", () => {
   });
 
   it("moves a note from jar to pulled list on pull", () => {
-    useNoteStore.getState().setNoteState(3, []);
+    useNoteStore.getState().setNoteState({ inJarCount: 3, pulledNotes: [] });
     useNoteStore.getState().notePulled(makeNote({ id: "pulled-1" }));
 
     expect(useNoteStore.getState().inJarCount).toBe(2);
@@ -49,7 +49,7 @@ describe("noteStore", () => {
 
   it("removes a note from pulled list on discard", () => {
     const pulled = [makeNote({ id: "n1" }), makeNote({ id: "n2" })];
-    useNoteStore.getState().setNoteState(0, pulled);
+    useNoteStore.getState().setNoteState({ inJarCount: 0, pulledNotes: pulled });
     useNoteStore.getState().noteDiscarded("n1");
 
     expect(useNoteStore.getState().pulledNotes).toHaveLength(1);
@@ -58,7 +58,7 @@ describe("noteStore", () => {
 
   it("removes note from pulled and updates count on return", () => {
     const pulled = [makeNote({ id: "n1" })];
-    useNoteStore.getState().setNoteState(2, pulled);
+    useNoteStore.getState().setNoteState({ inJarCount: 2, pulledNotes: pulled });
     useNoteStore.getState().noteReturned("n1", 3);
 
     expect(useNoteStore.getState().pulledNotes).toHaveLength(0);
@@ -66,7 +66,7 @@ describe("noteStore", () => {
   });
 
   it("resets to initial state", () => {
-    useNoteStore.getState().setNoteState(10, [makeNote()]);
+    useNoteStore.getState().setNoteState({ inJarCount: 10, pulledNotes: [makeNote()] });
     useNoteStore.getState().reset();
 
     expect(useNoteStore.getState().inJarCount).toBe(0);

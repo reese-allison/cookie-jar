@@ -29,9 +29,13 @@ export function TemplateBrowser({ onClone, isCloning }: TemplateBrowserProps) {
   }, []);
 
   useEffect(() => {
+    // Retry the fetch every time the browser is reopened if we don't yet have
+    // any templates — without this, a transient network failure on the first
+    // open leaves the user permanently stuck on "Failed to load templates".
     if (isOpen && templates.length === 0) {
       loadTemplates();
     }
+    if (!isOpen) setLoadError(false);
   }, [isOpen, templates.length, loadTemplates]);
 
   return (

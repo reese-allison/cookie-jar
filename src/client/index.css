@@ -102,6 +102,124 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
+   Primitives — shared building blocks
+   --------------------------------------------------------------------------
+   Buttons compose one of: .btn (primary), .btn--ghost (low-emphasis), or
+   .btn--icon (36×36 icon-only). Size/shape variants layer as modifier
+   classes (.btn--hero, .btn--inline). Component-scoped rules like
+   .pull-history__toggle or .jar-settings-reset-actions__btn only carry the
+   deltas — the base styling comes from the primitive they compose.
+   ========================================================================== */
+
+/* Base button. Size/shape variants layer modifier classes on top. */
+.btn {
+  font-family: "Nunito", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.625rem 1.25rem;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+/* Hero-scale — slightly taller padding for the landing-screen CTA. */
+.btn--hero {
+  padding: 0.75rem 1.5rem;
+}
+
+/* Inline-scale — nested beside an input (CreateJar "Create Jar"). */
+.btn--inline {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+/* Ghost — low-emphasis surface action (Leave, room-actions entries, pull-history toggle) */
+.btn--ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: "Nunito", sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.375rem 1rem;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-cream);
+}
+
+.btn--ghost:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Icon — square 36x36 pill for icon-only controls (sound, settings, star). */
+.btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.btn--icon:hover:not(:disabled) {
+  background: var(--color-cream);
+  color: var(--color-primary-hover);
+}
+
+.btn--icon > svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* Card — elevated surface with consistent radius + shadow */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+}
+
+/* ==========================================================================
    Animations
    ========================================================================== */
 
@@ -194,34 +312,8 @@ textarea:focus-visible {
   transition: border-color var(--transition-fast);
 }
 
-.room-code-entry > form button {
-  font-family: "Nunito", sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  padding: 0.75rem 1.5rem;
-  min-height: 44px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.room-code-entry > form button:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.room-code-entry > form button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.room-code-entry > form button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Primary submit button styles are inherited from the shared .btn primitive
+   at the top of the file; only the size override lives there. */
 
 .room-code-entry .error {
   color: var(--color-error);
@@ -251,11 +343,6 @@ textarea:focus-visible {
 }
 
 .room-code-entry__auth-note {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-}
-
-.room-code-entry__guest-note {
   font-size: 0.8rem;
   color: var(--color-text-muted);
 }
@@ -297,35 +384,7 @@ textarea:focus-visible {
   transition: border-color var(--transition-fast);
 }
 
-.create-jar button {
-  font-family: "Nunito", sans-serif;
-  font-size: 0.875rem;
-  font-weight: 700;
-  padding: 0.625rem 1.25rem;
-  min-height: 44px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.create-jar button:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.create-jar button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.create-jar button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* .create-jar button is styled by the shared .btn primitive at the top. */
 
 /* ==========================================================================
    Template Browser
@@ -423,33 +482,6 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   Divider
-   ========================================================================== */
-
-.room-code-entry__divider {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  max-width: 360px;
-  margin: 1rem 0;
-}
-
-.room-code-entry__divider::before,
-.room-code-entry__divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
-}
-
-.room-code-entry__divider span {
-  padding: 0 0.75rem;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-/* ==========================================================================
    Auth Buttons
    ========================================================================== */
 
@@ -492,57 +524,31 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   User Menu
-   ========================================================================== */
-
-.user-menu {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.user-menu__avatar {
-  border-radius: 50%;
-}
-
-.user-menu__name {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: var(--color-text);
-}
-
-.user-menu__signout {
-  font-family: "Nunito", sans-serif;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: transparent;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.user-menu__signout:hover {
-  background: var(--color-cream);
-  color: var(--color-text);
-}
-
-/* ==========================================================================
    Viewer Notice
    ========================================================================== */
 
 .viewer-notice {
+  font-family: "Nunito", sans-serif;
   font-size: 0.875rem;
+  font-weight: 600;
   color: var(--color-text-muted);
   text-align: center;
   padding: 1rem;
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-bg);
+  cursor: pointer;
+  width: 100%;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.viewer-notice:hover {
+  background: var(--color-cream);
+  color: var(--color-text);
+  border-color: var(--color-primary);
 }
 
 /* ==========================================================================
@@ -553,22 +559,10 @@ textarea:focus-visible {
   position: relative;
 }
 
+/* Composes .btn--ghost; only the smaller text + tighter padding differ. */
 .pull-history__toggle {
-  font-family: "Nunito", sans-serif;
   font-size: 0.8rem;
-  font-weight: 600;
   padding: 0.375rem 0.75rem;
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.pull-history__toggle:hover {
-  background: var(--color-cream);
 }
 
 .pull-history__panel {
@@ -717,45 +711,10 @@ main:has(.room-view) {
   z-index: 10;
 }
 
-.room-state {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.25rem 0.75rem;
-  border-radius: var(--radius-pill);
-  background: rgba(63, 97, 40, 0.14);
-  color: var(--color-success);
-}
-
 .room-actions {
   margin-left: auto;
   display: flex;
   gap: 0.5rem;
-}
-
-.room-actions button {
-  font-family: "Nunito", sans-serif;
-  font-size: 0.875rem;
-  font-weight: 600;
-  padding: 0.375rem 1rem;
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.room-actions button:hover {
-  background: var(--color-cream);
-}
-
-.room-actions button:active {
-  transform: scale(0.97);
 }
 
 /* ==========================================================================
@@ -811,10 +770,9 @@ main:has(.room-view) {
 }
 
 /* Full-width stacked action buttons inside the overflow menu. */
-.room-header-menu__panel > button,
-.room-header-menu__panel .sound-toggle,
-.room-header-menu__panel .pull-history__toggle,
-.room-header-menu__panel .room-settings-btn {
+:where(.room-header-menu__panel) > button,
+:where(.room-header-menu__panel) .btn--ghost,
+:where(.room-header-menu__panel) .btn--icon {
   width: 100%;
   justify-content: flex-start;
   text-align: left;
@@ -957,13 +915,6 @@ main:has(.room-view) {
   font-size: 1.1rem;
   color: var(--color-primary);
   margin-top: 0.25rem;
-}
-
-.jar__lock-indicator {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-error);
-  margin-top: 0.5rem;
 }
 
 /* ==========================================================================
@@ -1326,7 +1277,8 @@ main:has(.room-view) {
   text-underline-offset: 2px;
 }
 
-.pulled-note__pulled-by {
+.pulled-note__pulled-by,
+.pulled-note__author {
   font-family: "Nunito", sans-serif;
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -1432,35 +1384,10 @@ main:has(.room-view) {
 }
 
 /* ==========================================================================
-   Sound Toggle
+   Sound Toggle — composes .btn--icon; this rule only carries the
+   muted-state tint scoped to the sound toggle so other aria-pressed icon
+   buttons (e.g. star) don't turn red.
    ========================================================================== */
-
-.sound-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: var(--radius-pill);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.sound-toggle:hover {
-  background: var(--color-cream);
-  color: var(--color-primary-hover);
-}
-
-.sound-toggle svg {
-  width: 18px;
-  height: 18px;
-}
 
 .sound-toggle[aria-pressed="true"] {
   color: var(--color-error);
@@ -1570,7 +1497,7 @@ main:has(.room-view) {
     padding: 0.5rem 0.75rem;
   }
 
-  .room-header .room-jar-name {
+  :where(.room-header) .room-jar-name {
     max-width: 40vw;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1877,47 +1804,6 @@ main:has(.room-view) {
   cursor: pointer;
 }
 
-.jar-settings-preview {
-  width: 160px;
-  height: 160px;
-  margin: 0 auto 1rem;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-surface);
-  overflow: hidden;
-}
-.jar-settings-preview img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-.jar-settings-preview__placeholder {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-.jar-settings-upload-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.jar-settings-sound-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-.jar-settings-sound-hint {
-  grid-column: 1 / -1;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-  margin: 0.25rem 0 0;
-}
-
 /* Segmented Control */
 .segmented-control {
   display: inline-flex;
@@ -1961,9 +1847,6 @@ main:has(.room-view) {
   width: 100%;
   min-height: 96px;
   position: relative;
-}
-.jar-settings-sound-slot > .image-upload {
-  height: 72px;
 }
 .image-upload__drop {
   display: flex;
@@ -2111,37 +1994,6 @@ main:has(.room-view) {
   margin: 0.25rem 0 0;
 }
 
-/* Room header gear button. The .room-actions button rule earlier in the file
-   has higher type+class specificity than a single class, so we scope this one
-   with .room-actions to win and override the 16px horizontal padding that
-   otherwise squashes the SVG down to 2px wide. */
-.room-actions .room-settings-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: var(--radius-pill);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-}
-.room-actions .room-settings-btn:hover {
-  background: var(--color-cream);
-  color: var(--color-primary-hover);
-}
-.room-actions .room-settings-btn svg {
-  width: 18px;
-  height: 18px;
-  flex: none;
-}
-
 @media (max-width: 640px) {
   .jar-settings-drawer {
     width: 100%;
@@ -2209,6 +2061,78 @@ main:has(.room-view) {
 .top-bar__button:hover {
   background: var(--color-cream);
   color: var(--color-text);
+}
+
+.top-bar__button--primary {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.top-bar__button--primary:hover {
+  background: var(--color-primary);
+  color: var(--color-surface);
+  filter: brightness(1.05);
+}
+
+/* ==========================================================================
+   Sign-in Modal
+   ========================================================================== */
+
+.sign-in-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.sign-in-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45, 45, 45, 0.45);
+}
+
+.sign-in-modal__panel {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.sign-in-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.sign-in-modal__header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.sign-in-modal__close {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.sign-in-modal__note {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
 }
 
 /* ==========================================================================
@@ -2350,4 +2274,120 @@ main:has(.room-view) {
   font-size: 1.375rem;
   font-weight: 600;
   color: var(--color-text);
+}
+
+/* ==========================================================================
+   Error Toast
+   ========================================================================== */
+
+.error-toast {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(480px, calc(100vw - 2rem));
+  padding: 0.75rem 1rem;
+  background: var(--color-error);
+  color: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lifted);
+  cursor: pointer;
+  animation: fadeInUp 200ms ease-out;
+  font-family: "Nunito", sans-serif;
+  font-size: 0.95rem;
+}
+
+.error-toast__text {
+  flex: 1;
+}
+
+.error-toast__close {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.error-toast__close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================================================
+   My Jars drawer — delete button
+   ========================================================================== */
+
+.my-jars-drawer__jar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.my-jars-drawer__delete {
+  font-family: "Nunito", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.625rem;
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.my-jars-drawer__delete:hover {
+  background: var(--color-error);
+  color: #fff;
+}
+
+/* ==========================================================================
+   Jar Settings — bulk reset actions
+   ========================================================================== */
+
+.jar-settings-reset-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Composes .btn--ghost — only the reset-specific overrides live here. */
+.jar-settings-reset-actions__btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.jar-settings-reset-actions__btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.jar-settings-reset-actions__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.jar-settings-reset-actions__btn--danger {
+  color: var(--color-error);
+  border-color: currentColor;
+}
+
+.jar-settings-reset-actions__btn--danger:hover:not(:disabled) {
+  background: var(--color-error);
+  color: #fff;
+  border-color: var(--color-error);
 }

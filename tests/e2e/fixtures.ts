@@ -6,6 +6,9 @@ import { type Browser, type BrowserContext, test as base, type Page } from "@pla
  */
 async function signInAnonymously(page: Page): Promise<void> {
   await page.goto("/");
+  // Auth buttons live under the Host tab (Join tab only shows the room-code
+  // form). Unauthed users default to Join, so switch over first.
+  await page.getByRole("radio", { name: /Host/i }).click();
   // Safety: fail fast if we accidentally run against a prod build with no dev button.
   const devBtn = page.getByRole("button", { name: /Continue anonymously/i });
   await devBtn.waitFor({ state: "visible", timeout: 10_000 });

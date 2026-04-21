@@ -10,6 +10,7 @@ import type { Socket } from "socket.io";
 import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
+import * as starQueries from "../db/queries/starredJars";
 import type { SocketContext } from "./context";
 import type { SocketDeps } from "./deps";
 import type { IdleTimeoutManager } from "./idleTimeout";
@@ -18,20 +19,81 @@ import type { TypedServer } from "./server";
 export type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 export type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>;
 
+interface PullAttribution {
+  pulledBy?: string | null;
+  pulledByUserId?: string | null;
+}
+interface Viewer {
+  userId?: string | null;
+  displayName?: string | null;
+}
+
+/**
+ * Decide whether a pulled row (note or history entry) belongs to the viewer.
+ * Prefer user-id match when both sides have it — stable across display-name
+ * collisions. Fall back to display-name for anonymous sessions or legacy rows
+ * pulled before pulled_by_user_id existed.
+ */
+export function isPullMine(entry: PullAttribution, viewer: Viewer): boolean {
+  if (viewer.userId && entry.pulledByUserId) return entry.pulledByUserId === viewer.userId;
+  return entry.pulledBy === viewer.displayName;
+}
+
+type JarSummary = {
+  name?: string | null;
+  config: JarConfig | null;
+  appearance: JarAppearance | null;
+};
+
+/**
+ * Common fields for every note:state payload — counts, jar metadata, and the
+ * sealed buffer length so joiners and post-refresh clients stay in sync with
+ * the sealed stack. Kept in one place so a new field (e.g. jarName) doesn't
+ * have to be wired through two parallel builders.
+ */
+export async function buildNoteStateShared(
+  jar: JarSummary,
+  jarId: string,
+  roomId: string,
+  deps: Pick<SocketDeps, "sealedNotesStore">,
+): Promise<{
+  inJarCount: number;
+  jarName?: string;
+  jarConfig?: JarConfig;
+  jarAppearance?: JarAppearance;
+  sealedCount: number;
+  sealedRevealAt: number;
+}> {
+  const [inJarCount, sealedCount] = await Promise.all([
+    noteQueries.countNotesByState(pool, jarId, "in_jar"),
+    deps.sealedNotesStore.length(roomId),
+  ]);
+  return {
+    inJarCount,
+    jarName: jar.name ?? undefined,
+    jarConfig: jar.config ?? undefined,
+    jarAppearance: jar.appearance ?? undefined,
+    sealedCount,
+    sealedRevealAt: jar.config?.sealedRevealCount ?? 0,
+  };
+}
+
 /**
  * Builds the compact `note:state` payload broadcast on `jar:refresh`. We
  * deliberately omit `pulledNotes` — it's unchanged by jar edits and costs
  * ~200 bytes/note × members. Clients must preserve their existing pulled
  * notes when this field is absent (see NoteStatePayload doc).
+ *
+ * Retained as a thin sync wrapper for tests that assert the shape without
+ * needing a real sealed store.
  */
 export function buildJarRefreshPayload(
-  jar: { config: JarConfig | null; appearance: JarAppearance | null },
+  jar: { config: JarConfig | null; appearance: JarAppearance | null; name?: string | null },
   inJarCount: number,
-  pullCounts: Record<string, number>,
 ) {
   return {
     inJarCount,
-    pullCounts,
+    jarName: jar.name ?? undefined,
     jarConfig: jar.config ?? undefined,
     jarAppearance: jar.appearance ?? undefined,
   };
@@ -133,41 +195,47 @@ export function attachMember(
 
 export async function sendNoteState(
   socket: TypedSocket,
+  jar: JarSummary & { ownerId?: string | null },
   jarId: string,
+  roomId: string,
+  deps: SocketDeps,
   isPrivate: boolean,
-  jarConfig: JarConfig | null,
-  jarAppearance: JarAppearance | null,
   displayName: string | null,
+  userId: string | null,
 ): Promise<void> {
-  const shared = {
-    jarConfig: jarConfig ?? undefined,
-    jarAppearance: jarAppearance ?? undefined,
-  };
-  const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
-  if (isPrivate) {
-    const [allPulled, pullCounts] = await Promise.all([
-      noteQueries.listNotesByJar(pool, jarId, "pulled"),
-      noteQueries.getPullCounts(pool, jarId),
-    ]);
-    // pulledBy is stored as the user's displayName (see pullRandomNote caller)
-    const myNotes = displayName ? allPulled.filter((n) => n.pulledBy === displayName) : [];
-    socket.emit("note:state", { inJarCount, pulledNotes: myNotes, pullCounts, ...shared });
-  } else {
-    const pulledNotes = await noteQueries.listNotesByJar(pool, jarId, "pulled");
-    socket.emit("note:state", { inJarCount, pulledNotes, ...shared });
-  }
+  // Star lookup only when the viewer is signed in and isn't the owner —
+  // owners don't star their own jars, anonymous users can't star at all.
+  const starLookup =
+    userId && jar.ownerId && jar.ownerId !== userId
+      ? starQueries.isStarred(pool, userId, jarId)
+      : Promise.resolve(false);
+  const [shared, pulledNotes, isStarred] = await Promise.all([
+    buildNoteStateShared(jar, jarId, roomId, deps),
+    noteQueries.listNotesByJar(pool, jarId, "pulled"),
+    starLookup,
+  ]);
+  const filtered = isPrivate
+    ? pulledNotes.filter((n) => isPullMine(n, { userId, displayName }))
+    : pulledNotes;
+  socket.emit("note:state", { ...shared, pulledNotes: filtered, isStarred });
 }
 
 export function startIdleTimeout(
   io: TypedServer,
   idleTimeouts: IdleTimeoutManager | undefined,
   roomId: string,
+  jarId: string,
   timeoutMinutes: number,
   deps: SocketDeps,
 ): void {
   if (!idleTimeouts) return;
   idleTimeouts.start(roomId, timeoutMinutes, async (expiredRoomId) => {
     await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
+    // Reset pulled notes back into the jar so the next room for this jar
+    // starts from a clean state — the previous group disconnected before
+    // returning what they pulled, and leaving them "pulled" in the DB
+    // surfaces as ghost notes on the next room's table.
+    await noteQueries.resetPulledNotesForJar(pool, jarId);
     io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
     io.in(expiredRoomId).disconnectSockets();
     await deps.presenceStore.clearRoom(expiredRoomId);

@@ -99,10 +99,29 @@ describe("room queries", () => {
   });
 
   it("generates unique codes across multiple rooms", async () => {
-    const rooms = await Promise.all(
-      Array.from({ length: 10 }, () => roomQueries.createRoom(pool, { jarId: testJarId })),
+    // Each room needs its own jar — the partial unique index on
+    // rooms(jar_id) WHERE state != 'closed' caps active rooms at one per
+    // jar. We're testing code-generator distinctness here, not multi-room
+    // support per jar.
+    const ownerRow = await pool.query("SELECT owner_id FROM jars WHERE id = $1", [testJarId]);
+    const ownerId = ownerRow.rows[0].owner_id as string;
+    const jarIds = await Promise.all(
+      Array.from({ length: 10 }, async (_, i) => {
+        const j = await pool.query(
+          "INSERT INTO jars (owner_id, name) VALUES ($1, $2) RETURNING id",
+          [ownerId, `code-uniqueness-${i}`],
+        );
+        return j.rows[0].id as string;
+      }),
     );
-    const codes = new Set(rooms.map((r) => r.code));
-    expect(codes.size).toBe(10);
+    try {
+      const rooms = await Promise.all(
+        jarIds.map((jarId) => roomQueries.createRoom(pool, { jarId })),
+      );
+      const codes = new Set(rooms.map((r) => r.code));
+      expect(codes.size).toBe(10);
+    } finally {
+      await pool.query("DELETE FROM jars WHERE id = ANY($1::uuid[])", [jarIds]);
+    }
   });
 });

@@ -1,8 +1,10 @@
 import type { JarAppearance, JarConfig } from "@shared/types";
 import { sanitizeJarAppearance, sanitizeJarConfig } from "@shared/validation";
 import { type Response, Router } from "express";
+import { canAccessJar, canJoinJar } from "../access";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
+import * as starQueries from "../db/queries/starredJars";
 import { logger } from "../logger";
 import {
   type AuthenticatedRequest,
@@ -10,6 +12,7 @@ import {
   getUser,
   requireAuth,
 } from "../middleware/requireAuth";
+import { disconnectJarRooms } from "../socket/broadcaster";
 
 export const jarRouter = Router();
 
@@ -75,20 +78,81 @@ jarRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// List the current user's jars, each with any active (non-closed) rooms.
-// Registered before /:id so "mine" isn't matched as an id.
+// List the current user's jars — both their owned ones (with active rooms)
+// and anything they've starred (including tombstones they've since lost
+// access to). Registered before /:id so "mine" isn't matched as an id.
 jarRouter.get("/mine", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const jars = await jarQueries.listOwnedJarsWithRooms(pool, getUser(req).id);
-    res.json(jars);
+    const viewer = { userId: getUser(req).id, email: getUser(req).email };
+    const [owned, starred] = await Promise.all([
+      jarQueries.listOwnedJarsWithRooms(pool, viewer.userId),
+      starQueries.listStarredJarsWithRooms(pool, viewer.userId),
+    ]);
+    // Starred list is shaped the same but carries a hasAccess flag so the
+    // client can render "no access" as a tombstone without making a second
+    // round-trip per jar to check the allowlist. Use canJoinJar — the same
+    // rule the room:join socket and POST /api/rooms apply — so a code-holder
+    // on a no-allowlist jar isn't mislabeled as "no access".
+    const starredWithAccess = starred.map((jar) => ({
+      ...jar,
+      hasAccess: canJoinJar(jar, viewer),
+    }));
+    res.json({ ownedJars: owned, starredJars: starredWithAccess });
   } catch (err) {
     logger.error({ err }, "GET /api/jars/mine failed");
     res.status(500).json({ error: "Failed to list your jars" });
   }
 });
 
-// Get a jar by ID. Private jars only return to their owner — config and
-// appearance are considered sensitive (custom URLs, sealed settings).
+// Star a jar (add it to "My Jars" for a non-owner). Requires access — you
+// can't star a jar you don't have permission to see. Owners don't need to
+// star their own jars; they're returned from the owned list unconditionally.
+jarRouter.put("/:id/star", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const jarId = asString(req.params.id);
+    const viewer = { userId: getUser(req).id, email: getUser(req).email };
+    const jar = await jarQueries.getJarById(pool, jarId);
+    if (!jar) {
+      res.status(404).json({ error: "Jar not found" });
+      return;
+    }
+    if (jar.ownerId === viewer.userId) {
+      // Starring your own jar is a no-op; fail loud so clients don't gate UI
+      // on a mixed "owned + starred" state.
+      res.status(400).json({ error: "Owners don't need to star their own jars" });
+      return;
+    }
+    // Mirror the join rule: if you can legitimately join this jar's rooms
+    // (allowlist satisfied OR the jar has no allowlist so code-holders get
+    // in) you should be able to bookmark it. Stricter canAccessJar would
+    // block users who joined under the legacy "has-the-code" path.
+    if (!canJoinJar(jar, viewer)) {
+      res.status(403).json({ error: "Not authorized to star this jar" });
+      return;
+    }
+    await starQueries.starJar(pool, viewer.userId, jarId);
+    res.status(204).send();
+  } catch (err) {
+    logger.error({ err }, "PUT /api/jars/:id/star failed");
+    res.status(500).json({ error: "Failed to star jar" });
+  }
+});
+
+// Remove a star. Always allowed — your own bookmark, your choice.
+jarRouter.delete("/:id/star", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const jarId = asString(req.params.id);
+    await starQueries.unstarJar(pool, getUser(req).id, jarId);
+    res.status(204).send();
+  } catch (err) {
+    logger.error({ err }, "DELETE /api/jars/:id/star failed");
+    res.status(500).json({ error: "Failed to unstar jar" });
+  }
+});
+
+// Get a jar by ID. Access rules: owner, public, template, or on the
+// allowlist. Everything else is 403 — config and appearance carry custom
+// URLs and sealed settings we treat as sensitive.
 jarRouter.get("/:id", attachUser, async (req: AuthenticatedRequest, res) => {
   try {
     const jar = await jarQueries.getJarById(pool, asString(req.params.id));
@@ -96,7 +160,7 @@ jarRouter.get("/:id", attachUser, async (req: AuthenticatedRequest, res) => {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (!jar.isPublic && !jar.isTemplate && jar.ownerId !== (req.user?.id ?? null)) {
+    if (!canAccessJar(jar, { userId: req.user?.id ?? null, email: req.user?.email ?? null })) {
       res.status(403).json({ error: "Not authorized to view this jar" });
       return;
     }
@@ -219,6 +283,9 @@ jarRouter.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res) => 
       res.status(403).json({ error: "Only the jar owner can delete it" });
       return;
     }
+    // Kick live sockets *before* the cascade-delete, otherwise the next DB
+    // event from any of them 500s on a missing room/jar.
+    await disconnectJarRooms(jarId, "This jar was deleted");
     await jarQueries.deleteJar(pool, jarId);
     res.status(204).send();
   } catch (err) {

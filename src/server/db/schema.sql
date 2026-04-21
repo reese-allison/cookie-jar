@@ -82,6 +82,7 @@ CREATE TABLE notes (
   state TEXT NOT NULL DEFAULT 'in_jar' CHECK (state IN ('in_jar', 'pulled', 'discarded')),
   author_id UUID REFERENCES users(id),
   pulled_by TEXT,
+  pulled_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -90,6 +91,7 @@ CREATE INDEX idx_notes_jar_id ON notes(jar_id);
 CREATE INDEX idx_notes_jar_state ON notes(jar_id, state);
 CREATE INDEX idx_notes_jar_state_created ON notes(jar_id, state, created_at);
 CREATE INDEX idx_notes_author_id ON notes(author_id);
+CREATE INDEX idx_notes_pulled_by_user_id ON notes(pulled_by_user_id);
 
 -- Rooms (live sessions around a jar)
 CREATE TABLE rooms (
@@ -106,6 +108,10 @@ CREATE TABLE rooms (
 
 CREATE INDEX idx_rooms_code ON rooms(code);
 CREATE INDEX idx_rooms_jar_id ON rooms(jar_id);
+-- One active (non-closed) room per jar. Without this the app-layer check in
+-- POST /api/rooms races against simultaneous creates from the owner and an
+-- allowlisted member.
+CREATE UNIQUE INDEX idx_rooms_active_per_jar ON rooms(jar_id) WHERE state != 'closed';
 
 -- Pull history (journal of what was pulled, when, by whom)
 CREATE TABLE pull_history (
@@ -113,6 +119,7 @@ CREATE TABLE pull_history (
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   pulled_by TEXT NOT NULL,
+  pulled_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   room_id UUID REFERENCES rooms(id) ON DELETE SET NULL,
   pulled_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -121,3 +128,17 @@ CREATE INDEX idx_pull_history_jar_id ON pull_history(jar_id);
 CREATE INDEX idx_pull_history_jar_pulled_at ON pull_history(jar_id, pulled_at DESC);
 CREATE INDEX idx_pull_history_note_id ON pull_history(note_id);
 CREATE INDEX idx_pull_history_room_id ON pull_history(room_id);
+CREATE INDEX idx_pull_history_pulled_by_user_id ON pull_history(pulled_by_user_id);
+
+-- Non-owners pin a jar to their My Jars list so they can come back to it.
+-- Owner's own jars are derived from jars.owner_id, so they aren't in here.
+-- The star survives even if the user is later removed from the jar's
+-- allowlist — the row just becomes inaccessible when they try to act on it.
+CREATE TABLE user_starred_jars (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
+  starred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, jar_id)
+);
+
+CREATE INDEX idx_user_starred_jars_user_id ON user_starred_jars(user_id);

@@ -29,6 +29,7 @@ const BASE_JAR = {
     sealedRevealCount: 1,
     showAuthors: false,
     showPulledBy: false,
+    onLeaveBehavior: "return",
   },
   isTemplate: false,
   isPublic: false,
@@ -36,6 +37,13 @@ const BASE_JAR = {
   updatedAt: "2026-04-01T00:00:00Z",
   ownerId: "u1",
 };
+
+function mineResponse(
+  ownedJars: Array<Record<string, unknown>> = [],
+  starredJars: Array<Record<string, unknown>> = [],
+) {
+  return okJson({ ownedJars, starredJars });
+}
 
 describe("MyJarsDrawer component", () => {
   it("does not fetch when closed", () => {
@@ -45,17 +53,17 @@ describe("MyJarsDrawer component", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("shows an empty state when the user has no jars", async () => {
-    fetchMock.mockResolvedValueOnce(okJson([]));
+  it("shows an empty state when the user has no jars or stars", async () => {
+    fetchMock.mockResolvedValueOnce(mineResponse());
     render(<MyJarsDrawer open onClose={vi.fn()} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText(/you haven't made any jars yet/i)).toBeDefined();
+      expect(screen.getByText(/haven't made or starred any jars/i)).toBeDefined();
     });
   });
 
   it("lists owned jars by name with active room codes", async () => {
     fetchMock.mockResolvedValueOnce(
-      okJson([
+      mineResponse([
         {
           ...BASE_JAR,
           id: "j1",
@@ -80,7 +88,7 @@ describe("MyJarsDrawer component", () => {
 
   it("calls onJoinRoom with the code when Join is clicked", async () => {
     fetchMock.mockResolvedValueOnce(
-      okJson([
+      mineResponse([
         {
           ...BASE_JAR,
           id: "j1",
@@ -98,7 +106,7 @@ describe("MyJarsDrawer component", () => {
 
   it("calls onCreateRoom with the jar id for jars without rooms", async () => {
     fetchMock.mockResolvedValueOnce(
-      okJson([
+      mineResponse([
         {
           ...BASE_JAR,
           id: "j-empty",
@@ -116,14 +124,72 @@ describe("MyJarsDrawer component", () => {
     expect(onCreateRoom).toHaveBeenCalledWith("j-empty");
   });
 
+  it("renders starred jars under their own section", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mineResponse(
+        [],
+        [
+          {
+            ...BASE_JAR,
+            id: "s1",
+            name: "Friend's Jar",
+            activeRooms: [{ code: "JOINME", state: "open", createdAt: BASE_JAR.createdAt }],
+            hasAccess: true,
+          },
+        ],
+      ),
+    );
+    render(<MyJarsDrawer open onClose={vi.fn()} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText(/starred/i)).toBeDefined();
+      expect(screen.getByText("Friend's Jar")).toBeDefined();
+      expect(screen.getByText("JOINME")).toBeDefined();
+    });
+  });
+
+  it("renders a no-access notice for starred jars the user lost access to", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mineResponse(
+        [],
+        [
+          {
+            ...BASE_JAR,
+            id: "s2",
+            name: "Locked-Out Jar",
+            activeRooms: [],
+            hasAccess: false,
+          },
+        ],
+      ),
+    );
+    render(<MyJarsDrawer open onClose={vi.fn()} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText(/no longer shown|removed your access/i)).toBeDefined();
+      // No Join / New Room affordance when access is gone.
+      expect(screen.queryByRole("button", { name: /new room/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^join$/i })).toBeNull();
+    });
+  });
+
   it("calls onClose when the close button is clicked", async () => {
-    fetchMock.mockResolvedValueOnce(okJson([]));
+    fetchMock.mockResolvedValueOnce(mineResponse());
     const onClose = vi.fn();
     render(<MyJarsDrawer open onClose={onClose} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText(/you haven't made any jars yet/i)).toBeDefined();
+      expect(screen.getByText(/haven't made or starred any jars/i)).toBeDefined();
     });
-    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("calls onClose on Escape so keyboard users can dismiss the drawer", async () => {
+    fetchMock.mockResolvedValueOnce(mineResponse());
+    const onClose = vi.fn();
+    render(<MyJarsDrawer open onClose={onClose} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText(/haven't made or starred any jars/i)).toBeDefined();
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
 });

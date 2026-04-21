@@ -2,20 +2,13 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as jarQueries from "../../../src/server/db/queries/jars";
 import * as userQueries from "../../../src/server/db/queries/users";
-import type { JarAppearance, JarConfig } from "../../../src/shared/types";
+import { makeJarAppearance, makeJarConfig } from "../../helpers/fixtures";
 
 let pool: pg.Pool;
 let testUserId: string;
 
-const TEST_APPEARANCE: JarAppearance = {
-  label: "Test Jar",
-};
-
-const TEST_CONFIG: JarConfig = {
-  noteVisibility: "open",
-  sealedRevealCount: 1,
-  showAuthors: false,
-};
+const TEST_APPEARANCE = makeJarAppearance();
+const TEST_CONFIG = makeJarConfig();
 
 beforeAll(async () => {
   pool = new pg.Pool({
