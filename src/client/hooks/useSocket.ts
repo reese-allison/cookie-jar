@@ -81,6 +81,11 @@ export function useSocket() {
     socket.on("disconnect", () => {
       setConnected(false);
       setMyId(null);
+      // Any action the user fired right before the blip is now inflight-lost —
+      // without this, the spinner stays stuck until some later event (rate_limited,
+      // room:error) resets it. Cheaper and more honest to reset here.
+      setAdding(false);
+      setPulling(false);
       // Pulls may have happened while we were offline. The next open of the
       // history panel must refetch rather than render stale entries — the
       // note:state we get on auto-rejoin doesn't include history.

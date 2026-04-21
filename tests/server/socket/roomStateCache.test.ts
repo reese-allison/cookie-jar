@@ -84,15 +84,6 @@ describe("roomStateCache", () => {
     cache.stop();
   });
 
-  it("invalidateRoom is a no-op — lock lives on the jar now", async () => {
-    const pool = makePool([]);
-    const cache = createRoomStateCache(pool, { autoSweep: false });
-    // Should not throw; and no DB calls were ever made.
-    cache.invalidateRoom("r1");
-    expect(pool.query as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
-    cache.stop();
-  });
-
   it("sweep drops expired entries so long-dead jars don't leak", async () => {
     const jarRow = {
       id: "j1",

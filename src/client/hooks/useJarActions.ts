@@ -11,19 +11,25 @@ export function useJarActions({ displayName, joinRoom, setError }: UseJarActions
 
   const openRoomForJar = useCallback(
     async (jarId: string): Promise<void> => {
-      const res = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ jarId }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Failed to create room");
-        return;
+      try {
+        const res = await fetch("/api/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ jarId }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: "Failed to create room" }));
+          setError(data.error ?? "Failed to create room");
+          return;
+        }
+        const newRoom = await res.json();
+        joinRoom(newRoom.code, displayName);
+      } catch {
+        // Network-level failure (offline, DNS, CORS). Surface a friendly error
+        // instead of letting the promise reject unhandled.
+        setError("Couldn't reach the server — check your connection.");
       }
-      const newRoom = await res.json();
-      joinRoom(newRoom.code, displayName);
     },
     [displayName, joinRoom, setError],
   );

@@ -239,9 +239,6 @@ export function startIdleTimeout(
     io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
     io.in(expiredRoomId).disconnectSockets();
     await deps.presenceStore.clearRoom(expiredRoomId);
-    // A closed room should never be referenced again — drop its cached lock
-    // state so the entry doesn't linger in the Map past the idle-sweep window.
-    deps.roomStateCache.invalidateRoom(expiredRoomId);
   });
 }
 

@@ -27,8 +27,6 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 
 export interface RoomStateCache {
   getJar(jarId: string): Promise<{ config: JarConfig | null; appearance: JarAppearance | null }>;
-  /** Kept for API compatibility — lock state is now a jar-config field, so room-level invalidation is a no-op. */
-  invalidateRoom(roomId: string): void;
   invalidateJar(jarId: string): void;
   /** Stop the internal sweep timer. Call during graceful shutdown. */
   stop(): void;
@@ -77,11 +75,6 @@ export function createRoomStateCache(
       };
       jars.set(jarId, entry);
       return { config: entry.config, appearance: entry.appearance };
-    },
-
-    invalidateRoom(_roomId) {
-      // No-op — lock state lives in jarConfig now. Callers invalidate the jar
-      // entry via invalidateJar instead.
     },
 
     invalidateJar(jarId) {

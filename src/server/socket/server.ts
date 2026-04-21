@@ -148,13 +148,18 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
   return {
     io,
     deps,
+    /**
+     * Tears down everything this factory owns — timers, buses, Redis clients
+     * belonging to the socket subsystem. Does NOT call `io.close()`; the outer
+     * shutdown handler in `src/server/index.ts` closes the io instance (and
+     * the underlying HTTP server) before invoking this cleanup.
+     */
     async stop() {
       if (zombieSweepHandle) clearTimeout(zombieSweepHandle);
       sessionChecker.stop();
       roomStateCache.stop();
       await kickBus.close();
       await cacheBus.close();
-      await io.close();
       await Promise.all([
         pubClient.quit(),
         subClient.quit(),

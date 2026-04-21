@@ -5,7 +5,7 @@ import { createAuthClient } from "better-auth/react";
 // dead-code elimination on import.meta.env.DEV.
 const devPlugins = import.meta.env.DEV ? [anonymousClient()] : [];
 
-export const authClient = createAuthClient({
+const authClient = createAuthClient({
   baseURL: window.location.origin,
   plugins: devPlugins,
 });

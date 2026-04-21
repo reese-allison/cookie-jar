@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { AuthHeader } from "./components/AuthHeader";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
@@ -39,7 +40,7 @@ function App() {
   const closeSignIn = useCallback(() => setSignInOpen(false), []);
 
   return (
-    <>
+    <ErrorBoundary>
       <ErrorToast />
       {room ? (
         <InRoomScreen
@@ -52,7 +53,7 @@ function App() {
         <LandingScreen user={user} socketApi={socketApi} onRequestSignIn={openSignIn} />
       )}
       <SignInModal open={signInOpen} onClose={closeSignIn} />
-    </>
+    </ErrorBoundary>
   );
 }
 

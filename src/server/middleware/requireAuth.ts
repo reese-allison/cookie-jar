@@ -48,11 +48,12 @@ export async function requireAuth(
   }
 }
 
-// better-auth's session cookie is named "<prefix>.session_token" where the
-// default prefix is "better-auth". Narrow the short-circuit so unrelated
-// cookies (analytics, LB affinity, consent banners) don't force us to hit
-// auth for every anonymous request.
-const SESSION_COOKIE_PATTERN = /(^|;\s*)[^=]*session_token=/;
+// better-auth's session cookie is named `better-auth.session_token` (the
+// default prefix + cookie name). Match exactly so unrelated cookies — and
+// any attacker-set look-alike like `evil_session_token=` — don't force us
+// to hit auth for every anonymous request. If we ever customize the prefix
+// via better-auth config, update this pattern in lockstep.
+const SESSION_COOKIE_PATTERN = /(?:^|;\s*)better-auth\.session_token=/;
 
 /**
  * Populates `req.user` if a valid session cookie is present but never rejects

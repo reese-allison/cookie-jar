@@ -1842,91 +1842,6 @@ main:has(.room-view) {
   outline-offset: 2px;
 }
 
-/* Image Upload */
-.image-upload {
-  width: 100%;
-  min-height: 96px;
-  position: relative;
-}
-.image-upload__drop {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  width: 100%;
-  min-height: 96px;
-  padding: 0.75rem;
-  border: 2px dashed var(--color-border);
-  background: var(--color-surface);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--transition-fast),
-    background var(--transition-fast);
-}
-.image-upload__drop:hover,
-.image-upload--drag-over .image-upload__drop {
-  border-color: var(--color-primary);
-  border-style: solid;
-  background: var(--color-cream);
-  color: var(--color-primary-hover);
-}
-.image-upload__icon {
-  width: 20px;
-  height: 20px;
-}
-.image-upload__label {
-  font-size: 0.75rem;
-  text-align: center;
-}
-.image-upload__status {
-  font-size: 0.8rem;
-}
-.image-upload--uploaded {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.image-upload__thumb {
-  width: 100%;
-  max-height: 96px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-}
-.image-upload__actions {
-  display: flex;
-  gap: 0.25rem;
-}
-.image-upload__btn {
-  flex: 1;
-  font-family: "Nunito", sans-serif;
-  font-size: 0.75rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.image-upload__btn:hover {
-  background: var(--color-cream);
-}
-.image-upload__btn--danger {
-  color: var(--color-error);
-}
-.image-upload__error {
-  font-size: 0.75rem;
-  color: var(--color-error);
-  margin: 0.25rem 0 0;
-}
-.image-upload--error .image-upload__drop {
-  border-color: var(--color-error);
-}
-
 /* Bulk Import */
 .bulk-import {
   display: flex;
@@ -2319,6 +2234,41 @@ main:has(.room-view) {
 
 .error-toast__close:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================================================
+   Error Boundary — full-screen fallback
+   ========================================================================== */
+
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--color-bg);
+}
+
+.error-boundary__card {
+  max-width: 420px;
+  padding: 2rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.error-boundary__title {
+  font-family: "Caveat", cursive;
+  font-size: 2rem;
+  color: var(--color-primary);
+  margin-bottom: 0.75rem;
+}
+
+.error-boundary__message {
+  font-family: "Nunito", sans-serif;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
 }
 
 /* ==========================================================================
