@@ -14,7 +14,7 @@ import { createHealthRouter } from "./routes/health";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
 import { roomRouter } from "./routes/rooms";
-import { createUploadRouter } from "./routes/uploads";
+import { createRedisQuota, createUploadRouter } from "./routes/uploads";
 import { createShutdownHandler } from "./shutdown";
 import { setSocketServer } from "./socket/broadcaster";
 import { buildSocketServer } from "./socket/server";
@@ -83,7 +83,35 @@ app.use("/api/jars", readOrWrite, jarRouter);
 app.use("/api/notes", readOrWrite, noteRouter);
 app.use("/api/rooms", readOrWrite, roomRouter);
 const uploadStorage = buildStorageFromEnv();
-app.use("/api/uploads", limiters.upload, createUploadRouter(uploadStorage));
+app.use(
+  "/api/uploads",
+  limiters.upload,
+  createUploadRouter(uploadStorage, createRedisQuota(sharedRedis)),
+);
+
+// 404 for any /api route that didn't match a handler. Without this, Express
+// falls through to its default HTML 404 page, breaking clients that expect
+// JSON errors everywhere. Non-API requests (static assets) continue through
+// express.static and hit real 404s there.
+app.use("/api", (_req: express.Request, res: express.Response) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Terminal error handler. Catches multer (mime/size rejection), unhandled
+// route throws that bypass each router's try/catch, and anything the body
+// parser rejects (malformed JSON, payload too large). Returns the JSON shape
+// every other endpoint emits so client error handling stays uniform.
+const jsonErrorHandler: express.ErrorRequestHandler = (err, req, res, _next) => {
+  const e = err as Error & { status?: number; statusCode?: number };
+  const status = e.status ?? e.statusCode ?? 500;
+  if (status >= 500) {
+    logger.error({ err: e, path: req.path }, "unhandled route error");
+  } else {
+    logger.warn({ msg: e.message, path: req.path, status }, "request rejected");
+  }
+  res.status(status).json({ error: e.message || "Internal error" });
+};
+app.use(jsonErrorHandler);
 
 const PORT = process.env.PORT ?? 3001;
 

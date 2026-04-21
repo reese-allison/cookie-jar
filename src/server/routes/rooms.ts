@@ -3,6 +3,7 @@ import { canAccessJar } from "../access";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as roomQueries from "../db/queries/rooms";
+import { isRoomConstraintViolation, ROOM_ACTIVE_PER_JAR_CONSTRAINT } from "../db/queries/rooms";
 import { logger } from "../logger";
 import { type AuthenticatedRequest, getUser, requireAuth } from "../middleware/requireAuth";
 
@@ -81,10 +82,12 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       });
       res.status(201).json(room);
     } catch (err) {
-      // Partial unique index on rooms(jar_id) WHERE state != 'closed' —
-      // Postgres raises SQLSTATE 23505 when two creates race. Re-read and
-      // return the winner so the client always lands in the shared room.
-      if (isUniqueViolation(err)) {
+      // Only the partial unique index on rooms(jar_id) WHERE state != 'closed'
+      // means "another pod/request just created the active room for this
+      // jar". Re-read and return the winner so the client always lands in the
+      // shared room. Code-collision retries happen inside createRoom — if a
+      // different constraint fires here, let it bubble to the outer 500.
+      if (isRoomConstraintViolation(err, ROOM_ACTIVE_PER_JAR_CONSTRAINT)) {
         const racedWinner = await roomQueries.listActiveRoomsForJar(pool, jarId);
         if (racedWinner.length > 0) {
           res.status(200).json(racedWinner[0]);
@@ -98,10 +101,6 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
     res.status(500).json({ error: "Failed to create room" });
   }
 });
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as { code?: string }).code === "23505";
-}
 
 // Look up a room by code (public)
 roomRouter.get("/:code", async (req, res) => {

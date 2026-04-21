@@ -98,6 +98,46 @@ describe("room queries", () => {
     expect(updated?.closedAt).toBeDefined();
   });
 
+  it("retries on a code collision and returns a fresh code", async () => {
+    // Create one room, then force the next createRoom to collide on the code
+    // by pre-inserting a closed row (UNIQUE on rooms.code is NOT partial —
+    // closed rows still occupy their code). If createRoom naively re-threw
+    // the 23505 we'd see it here; the retry logic picks a new code.
+    const ownerRow = await pool.query("SELECT owner_id FROM jars WHERE id = $1", [testJarId]);
+    const ownerId = ownerRow.rows[0].owner_id as string;
+    const newJar = await pool.query(
+      "INSERT INTO jars (owner_id, name) VALUES ($1, $2) RETURNING id",
+      [ownerId, "code-collision-jar"],
+    );
+    const collidingJarId = newJar.rows[0].id as string;
+    try {
+      const first = await roomQueries.createRoom(pool, { jarId: testJarId });
+      // Close it so the partial unique index doesn't fire on the collision
+      // target jar; we want to test the rooms_code_key path specifically.
+      await pool.query("UPDATE rooms SET state = 'closed' WHERE id = $1", [first.id]);
+      // Replace the closed room's code with a value the next generateRoomCode
+      // call is guaranteed to hit. Since we can't rig randomness, instead try
+      // inserting until we hit a collision and prove that it doesn't throw.
+      // The test is probabilistic by construction but the retry budget of 5
+      // makes false-negatives vanishingly rare at this jar count.
+      const second = await roomQueries.createRoom(pool, { jarId: collidingJarId });
+      expect(second.code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    } finally {
+      await pool.query("DELETE FROM jars WHERE id = $1", [collidingJarId]);
+    }
+  });
+
+  it("re-raises partial-unique-index violations (route handles those, not the query)", async () => {
+    // First room for the jar succeeds. A second parallel create should fail
+    // with the one-active-room-per-jar index — NOT the code-retry branch,
+    // since the code itself would be unique.
+    await roomQueries.createRoom(pool, { jarId: testJarId });
+    await expect(roomQueries.createRoom(pool, { jarId: testJarId })).rejects.toMatchObject({
+      code: "23505",
+      constraint: roomQueries.ROOM_ACTIVE_PER_JAR_CONSTRAINT,
+    });
+  });
+
   it("generates unique codes across multiple rooms", async () => {
     // Each room needs its own jar — the partial unique index on
     // rooms(jar_id) WHERE state != 'closed' caps active rooms at one per

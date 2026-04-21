@@ -245,4 +245,87 @@ describe("note queries", () => {
       expect(moved).toHaveLength(1);
     });
   });
+
+  describe("createNoteIfUnderCap", () => {
+    it("inserts when the jar has room", async () => {
+      const note = await noteQueries.createNoteIfUnderCap(
+        pool,
+        { jarId: testJarId, text: "under cap", style: "sticky" },
+        3,
+      );
+      expect(note).not.toBeNull();
+      expect(note?.text).toBe("under cap");
+    });
+
+    it("returns null when at the cap", async () => {
+      await noteQueries.createNote(pool, { jarId: testJarId, text: "a", style: "sticky" });
+      await noteQueries.createNote(pool, { jarId: testJarId, text: "b", style: "sticky" });
+      const note = await noteQueries.createNoteIfUnderCap(
+        pool,
+        { jarId: testJarId, text: "c", style: "sticky" },
+        2,
+      );
+      expect(note).toBeNull();
+      expect(await noteQueries.countNotesByState(pool, testJarId, "in_jar")).toBe(2);
+    });
+
+    it("serializes concurrent inserts — cannot overflow the cap", async () => {
+      // Fire 10 concurrent inserts with a cap of 5. Without the advisory lock,
+      // all 10 race reads of count=0 and all 10 insert. With the lock, exactly
+      // 5 succeed and 5 return null.
+      const results = await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          noteQueries.createNoteIfUnderCap(
+            pool,
+            { jarId: testJarId, text: `race-${i}`, style: "sticky" },
+            5,
+          ),
+        ),
+      );
+      const inserted = results.filter((r: unknown) => r !== null).length;
+      expect(inserted).toBe(5);
+      expect(await noteQueries.countNotesByState(pool, testJarId, "in_jar")).toBe(5);
+    });
+  });
+
+  describe("url protocol CHECK", () => {
+    it("rejects a javascript: URL at the DB layer", async () => {
+      await expect(
+        pool.query("INSERT INTO notes (jar_id, text, url, style) VALUES ($1, $2, $3, $4)", [
+          testJarId,
+          "oops",
+          "javascript:alert(1)",
+          "sticky",
+        ]),
+      ).rejects.toThrow(/notes_url_protocol_check/);
+    });
+
+    it("rejects a data: URL at the DB layer", async () => {
+      await expect(
+        pool.query("INSERT INTO notes (jar_id, text, url, style) VALUES ($1, $2, $3, $4)", [
+          testJarId,
+          "oops",
+          "data:text/html,<script>alert(1)</script>",
+          "sticky",
+        ]),
+      ).rejects.toThrow(/notes_url_protocol_check/);
+    });
+
+    it("accepts http and https URLs", async () => {
+      const http = await noteQueries.createNote(pool, {
+        jarId: testJarId,
+        text: "link",
+        url: "http://example.com",
+        style: "sticky",
+      });
+      expect(http.url).toBe("http://example.com");
+      const https = await noteQueries.createNote(pool, {
+        jarId: testJarId,
+        text: "secure-link",
+        url: "https://example.com/path?q=1",
+        style: "sticky",
+      });
+      expect(https.url).toBe("https://example.com/path?q=1");
+    });
+  });
 });

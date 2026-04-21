@@ -12,9 +12,13 @@ export function isValidNoteText(text: string): boolean {
 }
 
 export function isValidUrl(url: string): boolean {
-  // Match the DB CHECK on notes.url so invalid input fails at the API, not
-  // the database. MAX_NOTE_URL_LENGTH is generous — OAuth return URLs and
-  // pre-signed S3 URLs routinely run ~1 KB.
+  // Kept in sync with the DB CHECK on notes.url (length + http(s)-only
+  // protocol) so invalid input fails at the API, not the database. The
+  // protocol check exists to stop `javascript:` / `data:` URLs from ever
+  // reaching PulledNote's `<a href={note.url}>` — React does not sanitize
+  // href and would otherwise execute them on click.
+  // MAX_NOTE_URL_LENGTH is generous — OAuth return URLs and pre-signed
+  // S3 URLs routinely run ~1 KB.
   if (url.length > MAX_NOTE_URL_LENGTH) return false;
   try {
     const parsed = new URL(url);

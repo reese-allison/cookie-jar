@@ -1,4 +1,4 @@
-import { MAX_BULK_IMPORT, MAX_NOTES_PER_JAR } from "@shared/constants";
+import { MAX_BULK_IMPORT, MAX_EXPORT_NOTES, MAX_NOTES_PER_JAR } from "@shared/constants";
 import type { Jar, NoteState } from "@shared/types";
 import { isValidNoteText, isValidUrl, parseNoteInput } from "@shared/validation";
 import { type Response, Router } from "express";
@@ -92,18 +92,21 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       return;
     }
     if (!assertUnlocked(jar, res)) return;
-    const existing = await noteQueries.countNotesByState(pool, jarId, "in_jar");
-    if (existing >= MAX_NOTES_PER_JAR) {
+    const note = await noteQueries.createNoteIfUnderCap(
+      pool,
+      {
+        jarId,
+        text: parsed.note.text,
+        url: parsed.note.url,
+        style: parsed.note.style,
+        authorId: getUser(req).id,
+      },
+      MAX_NOTES_PER_JAR,
+    );
+    if (!note) {
       res.status(400).json({ error: `Jar is full (${MAX_NOTES_PER_JAR} notes max)` });
       return;
     }
-    const note = await noteQueries.createNote(pool, {
-      jarId,
-      text: parsed.note.text,
-      url: parsed.note.url,
-      style: parsed.note.style,
-      authorId: getUser(req).id,
-    });
     res.status(201).json(note);
     // Push the new inJarCount to every live room so peers see the add without
     // waiting for a jar:refresh.
@@ -325,7 +328,11 @@ noteRouter.get("/export", attachUser, async (req: AuthenticatedRequest, res) => 
       res,
     );
     if (!jar) return;
-    const notes = await noteQueries.listNotesByJar(pool, jarId);
+    // Cap the export — otherwise a long-lived public/template jar's cumulative
+    // row count (discards + history) blows the Express response buffer. The
+    // user sees the first MAX_EXPORT_NOTES chronologically; beyond that, they
+    // need a future paginated endpoint (out of scope).
+    const notes = await noteQueries.listNotesByJar(pool, jarId, undefined, MAX_EXPORT_NOTES);
 
     if (format === "csv") {
       const escapeCsv = (val: string) => {

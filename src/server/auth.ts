@@ -35,19 +35,27 @@ export const auth = betterAuth({
   },
   secret: (() => {
     const secret = process.env.BETTER_AUTH_SECRET;
-    if (!secret && process.env.NODE_ENV === "production") {
-      throw new Error("BETTER_AUTH_SECRET must be set in production");
+    if (secret) return secret;
+    // Fail-closed on anything that isn't clearly local dev. Tests can't set
+    // env vars cleanly across the vitest/bun boundary so they get the fallback.
+    // Anything that isn't production but *also* isn't test (staging, "dev"
+    // deployed to a real host, ephemeral previews) must set the env var —
+    // otherwise sessions are signed with the well-known repo fallback and are
+    // trivially forgeable.
+    const env = process.env.NODE_ENV;
+    if (env && env !== "development" && env !== "test") {
+      throw new Error(
+        `BETTER_AUTH_SECRET must be set when NODE_ENV="${env}". ` +
+          "Only NODE_ENV=development (with a local secret) or NODE_ENV=test may omit it.",
+      );
     }
-    if (!secret && process.env.NODE_ENV !== "test") {
-      // Staging / dev-on-real-infra deploys forget NODE_ENV all the time. The
-      // fallback secret is public in this repo, so sessions signed with it are
-      // trivially forgeable. Make the warning loud enough to catch in logs.
+    if (env !== "test") {
       logger.warn(
         "BETTER_AUTH_SECRET unset — falling back to the well-known dev secret. " +
           "Set BETTER_AUTH_SECRET before exposing this server.",
       );
     }
-    return secret ?? "dev-only-secret-not-for-production";
+    return "dev-only-secret-not-for-production";
   })(),
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",
   trustedOrigins: [process.env.CLIENT_URL ?? "http://localhost:5175"],

@@ -1,6 +1,6 @@
 import type { Note, NoteState, NoteStyle } from "@shared/types";
 import type pg from "pg";
-import type { Queryable } from "../transaction";
+import { type Queryable, withTransaction } from "../transaction";
 
 interface CreateNoteInput {
   jarId: string;
@@ -65,6 +65,39 @@ export async function createNote(pool: pg.Pool, input: CreateNoteInput): Promise
   return rowToNote(rows[0]);
 }
 
+/**
+ * Insert a note only if the jar's current `in_jar` count is below `cap`.
+ * Returns the new note or null when the jar is full.
+ *
+ * Serialized per-jar via a transaction-scoped advisory lock so concurrent
+ * note:add handlers can't each pass their own "count < cap" check and
+ * collectively overflow. `hashtext` maps the jar UUID to the bigint key
+ * `pg_advisory_xact_lock` expects.
+ */
+export async function createNoteIfUnderCap(
+  pool: pg.Pool,
+  input: CreateNoteInput,
+  cap: number,
+): Promise<Note | null> {
+  return withTransaction(pool, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.jarId]);
+    const countRes = await client.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM notes WHERE jar_id = $1 AND state = 'in_jar'",
+      [input.jarId],
+    );
+    if (countRes.rows[0].n >= cap) return null;
+    const { rows } = await client.query(
+      withAuthorJoin(`
+        INSERT INTO notes (jar_id, text, url, style, author_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+      `),
+      [input.jarId, input.text, input.url ?? null, input.style, input.authorId],
+    );
+    return rowToNote(rows[0]);
+  });
+}
+
 export async function getNoteById(pool: pg.Pool, noteId: string): Promise<Note | null> {
   const { rows } = await pool.query(`${SELECT_NOTE_WITH_AUTHOR} WHERE n.id = $1`, [noteId]);
   return rows.length > 0 ? rowToNote(rows[0]) : null;
@@ -74,17 +107,22 @@ export async function listNotesByJar(
   pool: pg.Pool,
   jarId: string,
   state?: NoteState,
+  limit?: number,
 ): Promise<Note[]> {
+  // LIMIT NULL is equivalent to unlimited in Postgres — callers that care
+  // about bounded responses (e.g. the export route) pass a number; everyone
+  // else gets every row.
+  const boundedLimit = limit ?? null;
   if (state) {
     const { rows } = await pool.query(
-      `${SELECT_NOTE_WITH_AUTHOR} WHERE n.jar_id = $1 AND n.state = $2 ORDER BY n.created_at`,
-      [jarId, state],
+      `${SELECT_NOTE_WITH_AUTHOR} WHERE n.jar_id = $1 AND n.state = $2 ORDER BY n.created_at LIMIT $3`,
+      [jarId, state, boundedLimit],
     );
     return rows.map(rowToNote);
   }
   const { rows } = await pool.query(
-    `${SELECT_NOTE_WITH_AUTHOR} WHERE n.jar_id = $1 ORDER BY n.created_at`,
-    [jarId],
+    `${SELECT_NOTE_WITH_AUTHOR} WHERE n.jar_id = $1 ORDER BY n.created_at LIMIT $2`,
+    [jarId, boundedLimit],
   );
   return rows.map(rowToNote);
 }

@@ -77,7 +77,10 @@ CREATE TABLE notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   text TEXT NOT NULL CHECK (char_length(text) <= 500),
-  url TEXT CHECK (url IS NULL OR char_length(url) <= 2000),
+  url TEXT CHECK (
+    url IS NULL
+    OR (char_length(url) <= 2000 AND url ~* '^https?://')
+  ),
   style TEXT NOT NULL DEFAULT 'sticky' CHECK (style IN ('sticky', 'index_card', 'napkin', 'parchment', 'fortune_cookie')),
   state TEXT NOT NULL DEFAULT 'in_jar' CHECK (state IN ('in_jar', 'pulled', 'discarded')),
   author_id UUID REFERENCES users(id),

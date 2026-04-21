@@ -42,6 +42,12 @@ export function createS3Storage(cfg: S3StorageConfig, client?: S3Client): Storag
           ContentType: contentType,
           // Content-addressed keys never change — give clients a year of cache.
           CacheControl: "public, max-age=31536000, immutable",
+          // R2 ignores ACL entirely (objects inherit bucket visibility). On
+          // AWS, public-read is required for clients to load the URL without
+          // presigning — if the bucket's block-public-access is on, this call
+          // fails loud and ops can flip the right bucket setting, which is
+          // better than silent 403s when the UI tries to render an upload.
+          ACL: "public-read",
         }),
       );
       return `${publicBase}/${key}`;
