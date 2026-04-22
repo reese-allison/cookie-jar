@@ -44,6 +44,14 @@ export function applySecurityHeaders(app: Express): void {
           connectSrc: ["'self'", "ws:", "wss:"],
           // User-provided jar sound packs are owner-hosted at arbitrary URLs.
           mediaSrc: ["'self'", "https:"],
+          // vite-plugin-pwa generates dist/manifest.webmanifest — without this,
+          // manifest-src falls through to default-src 'none' and the PWA
+          // install prompt / icon metadata silently break.
+          manifestSrc: ["'self'"],
+          // vite-plugin-pwa also registers a service worker (dist/sw.js).
+          // worker-src falls through to script-src 'self' which already
+          // covers it, but being explicit is clearer.
+          workerSrc: ["'self'"],
           frameAncestors: ["'none'"],
           formAction: ["'self'"],
           objectSrc: ["'none'"],
