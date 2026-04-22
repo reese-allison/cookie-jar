@@ -141,11 +141,11 @@ export function RoomView({
       <button type="button" className="btn--ghost" onClick={onLeave}>
         Leave
       </button>
+      <PullHistory entries={history} onRefresh={onGetHistory} onClear={onClearHistory} />
+      {isOwner && <SettingsButton onClick={() => setSettingsOpen(true)} />}
       {!isOwner && onToggleStar && (
         <StarToggleButton starred={isStarred === true} onToggle={onToggleStar} />
       )}
-      <PullHistory entries={history} onRefresh={onGetHistory} onClear={onClearHistory} />
-      {isOwner && <SettingsButton onClick={() => setSettingsOpen(true)} />}
       <SoundToggle />
     </>
   );
@@ -216,6 +216,7 @@ export function RoomView({
               showPulledBy={showPulledBy}
               showAuthors={showAuthors}
               canDiscard={canWrite}
+              draggable={!isTouch}
               onDiscard={onDiscard}
               onReturn={onReturn}
               onHover={handleHover}
@@ -235,7 +236,12 @@ export function RoomView({
           </button>
         )}
 
-        {canWrite && <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />}
+        {/* Drag target is pointer-only — touch drag is unreliable (multi-touch
+            gestures hijack it), so on coarse pointers we hide the bin and
+            rely on the explicit Discard button on each pulled note. */}
+        {canWrite && !isTouch && (
+          <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />
+        )}
 
         {/* Cursors subscribe at the leaf so 15-Hz peer packets don't re-render RoomView. */}
         <RemoteCursors members={room.members} hidden={isTouch} />

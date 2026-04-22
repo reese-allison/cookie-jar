@@ -5,12 +5,12 @@ holds durable state, Upstash Redis holds cluster-scoped socket state.
 Target cost: ~$6/mo. Sized for 50 concurrent rooms × 5 users per the
 bench in `tests/load/bench.ts`.
 
-> **Pick your app names up front.** The examples below use `cookie-jar`
-> and `cookie-jar-db`, but `cookie-jar` is often globally taken — if so,
-> `fly apps create` will fail and you'll need a unique name like
-> `the-cookie-jar`, `<yourname>-cookie-jar`, etc. Whatever you choose,
-> substitute it consistently for `cookie-jar` in every command below AND
-> in `fly.toml` (line starting with `app =`). A mismatch between your
+> **App names.** This repo's `fly.toml` targets `the-cookie-jar` (the
+> bare `cookie-jar` is globally taken on Fly), and the commands below
+> use that name plus `cookie-jar-db` for the Postgres cluster. If
+> you're forking for your own deploy, pick a unique name, update
+> `fly.toml` (line starting with `app =`), and substitute it
+> consistently in every command below. A mismatch between your
 > fly.toml value, the name in `fly apps create`, and the `--app` flag
 > in secrets/attach commands is the #1 source of early deploy pain.
 
@@ -27,7 +27,7 @@ bench in `tests/load/bench.ts`.
 
 ```bash
 fly auth login
-fly apps create cookie-jar   # or whatever unique name you picked
+fly apps create the-cookie-jar   # or whatever unique name you picked
 ```
 
 If the name is taken, `fly apps create` prints `Error: already taken`.
@@ -46,7 +46,7 @@ fly postgres create \
 
 # Attach it — creates a database + user on the cluster and injects
 # DATABASE_URL into the app's secrets automatically.
-fly postgres attach cookie-jar-db --app cookie-jar
+fly postgres attach cookie-jar-db --app the-cookie-jar
 ```
 
 Fly Postgres (legacy) has no automatic PITR backups. If data ever
@@ -64,7 +64,7 @@ Managed Postgres (~$29/mo) for backups built-in.
    for Upstash connections; `redis://` will silently fail to connect.
 
 ```bash
-fly secrets set REDIS_URL='rediss://default:PASSWORD@YOUR-HOST.upstash.io:6379' --app cookie-jar
+fly secrets set REDIS_URL='rediss://default:PASSWORD@YOUR-HOST.upstash.io:6379' --app the-cookie-jar
 ```
 
 Single-quote the URL to protect special characters in the password.
@@ -72,7 +72,7 @@ Single-quote the URL to protect special characters in the password.
 ### 1d. Generate the auth secret
 
 ```bash
-fly secrets set BETTER_AUTH_SECRET="$(openssl rand -hex 32)" --app cookie-jar
+fly secrets set BETTER_AUTH_SECRET="$(openssl rand -hex 32)" --app the-cookie-jar
 ```
 
 ### 1e. Set the public URLs
@@ -85,20 +85,20 @@ attempt. No trailing slash, exact hostname.
 
 ```bash
 fly secrets set \
-  BETTER_AUTH_URL=https://cookie-jar.fly.dev \
-  CLIENT_URL=https://cookie-jar.fly.dev \
-  --app cookie-jar
+  BETTER_AUTH_URL=https://the-cookie-jar.fly.dev \
+  CLIENT_URL=https://the-cookie-jar.fly.dev \
+  --app the-cookie-jar
 ```
 
 **Using a custom domain:**
 
 ```bash
-fly certs create cookie-jar.example.com --app cookie-jar
+fly certs create cookie-jar.example.com --app the-cookie-jar
 # Add the AAAA / A records it prints to your DNS. Wait for propagation.
 fly secrets set \
   BETTER_AUTH_URL=https://cookie-jar.example.com \
   CLIENT_URL=https://cookie-jar.example.com \
-  --app cookie-jar
+  --app the-cookie-jar
 ```
 
 ### 1f. OAuth providers (recommended)
@@ -109,7 +109,7 @@ fly secrets set \
   GOOGLE_CLIENT_SECRET=... \
   DISCORD_CLIENT_ID=... \
   DISCORD_CLIENT_SECRET=... \
-  --app cookie-jar
+  --app the-cookie-jar
 ```
 
 **Register production callback URLs** at each provider. Missing this
@@ -140,7 +140,7 @@ Expected flow (~3–5 minutes):
 Verify:
 
 ```bash
-curl -s https://cookie-jar.fly.dev/api/live
+curl -s https://the-cookie-jar.fly.dev/api/live
 # → {"status":"ok"}
 ```
 
@@ -161,15 +161,15 @@ service worker auto-updates on the next normal reload thanks to
 
 | Task | Command |
 |---|---|
-| Tail logs | `fly logs --app cookie-jar` |
-| App status | `fly status --app cookie-jar` |
+| Tail logs | `fly logs --app the-cookie-jar` |
+| App status | `fly status --app the-cookie-jar` |
 | Postgres logs | `fly logs -a cookie-jar-db` |
-| SSH into app | `fly ssh console --app cookie-jar` |
-| List secrets | `fly secrets list --app cookie-jar` |
-| Unset a secret | `fly secrets unset FOO --app cookie-jar` |
-| Previous releases | `fly releases --app cookie-jar` |
-| Roll back | `fly deploy --image registry.fly.io/cookie-jar:v<N>` |
-| Seed templates | `fly ssh console --app cookie-jar -C "bun run src/server/db/seed-templates.ts"` |
+| SSH into app | `fly ssh console --app the-cookie-jar` |
+| List secrets | `fly secrets list --app the-cookie-jar` |
+| Unset a secret | `fly secrets unset FOO --app the-cookie-jar` |
+| Previous releases | `fly releases --app the-cookie-jar` |
+| Roll back | `fly deploy --image registry.fly.io/the-cookie-jar:v<N>` |
+| Seed templates | `fly ssh console --app the-cookie-jar -C "bun run src/server/db/seed-templates.ts"` |
 
 ## 4. Scaling
 
@@ -188,7 +188,7 @@ multi-pod correct via the Redis adapter + presence/dedup stores.
 ## 5. Teardown
 
 ```bash
-fly apps destroy cookie-jar       # destroys the app + its Machines
+fly apps destroy the-cookie-jar   # destroys the app + its Machines
 fly apps destroy cookie-jar-db    # destroys the Postgres cluster + volume
 # Then delete the Upstash Redis database from their console.
 ```
@@ -242,11 +242,11 @@ the server's `trustedOrigins` list. `trustedOrigins` is seeded from
 the `CLIENT_URL` secret in `src/server/auth.ts`. Check:
 
 ```bash
-fly ssh console --app cookie-jar -C 'sh -c "echo CLIENT_URL=[$CLIENT_URL]"'
+fly ssh console --app the-cookie-jar -C 'sh -c "echo CLIENT_URL=[$CLIENT_URL]"'
 ```
 
 Common failures:
-- Wrong hostname (e.g. `cookie-jar.fly.dev` when the real URL is `the-cookie-jar.fly.dev`)
+- Wrong hostname (the app is at `the-cookie-jar.fly.dev` but `CLIENT_URL` points somewhere else, e.g. missing the `the-` prefix)
 - Trailing slash
 - `http://` instead of `https://`
 - Accidentally missing altogether (defaults to `http://localhost:5175`)
@@ -284,7 +284,7 @@ can't do anything Redis-related:
 - Or the password contains unencoded special characters.
 - Or you hit Upstash's free-tier connection cap (rare — app opens 6).
 
-Check with `fly ssh console -a cookie-jar -C 'sh -c "echo $REDIS_URL | cut -c1-8"'` — output should start with `rediss://`.
+Check with `fly ssh console -a the-cookie-jar -C 'sh -c "echo $REDIS_URL | cut -c1-8"'` — output should start with `rediss://`.
 
 ### Stale SW serving OLD CSP (seeing fixed errors still)
 

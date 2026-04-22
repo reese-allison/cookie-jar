@@ -177,11 +177,15 @@ function InRoomScreen({
 
   // Memoized: recomputes only when identity-relevant inputs change, not on
   // every cursor packet. `room?.members.find` is O(n) so worth caching.
-  const { isViewer, isOwner } = useMemo(() => {
+  // `roleKnown` gates owner-only UI so a jar owner doesn't briefly see
+  // contributor affordances (like the star button) before the members array
+  // catches up to myId.
+  const { isViewer, isOwner, roleKnown } = useMemo(() => {
     const me = myId ? room?.members.find((m) => m.id === myId) : undefined;
     return {
       isViewer: me?.role === "viewer" || !session?.user,
       isOwner: me?.role === "owner",
+      roleKnown: me !== undefined,
     };
   }, [myId, room?.members, session?.user]);
 
@@ -227,7 +231,7 @@ function InRoomScreen({
         onClearHistory={isOwner ? clearHistory : undefined}
         onSignIn={onRequestSignIn}
         isStarred={isStarred}
-        onToggleStar={isOwner ? undefined : handleToggleStar}
+        onToggleStar={!roleKnown || isOwner ? undefined : handleToggleStar}
       />
     </main>
   );

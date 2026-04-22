@@ -13,6 +13,12 @@ interface DraggablePulledNoteProps {
   showAuthors?: boolean;
   /** When false, Discard is hidden and drag-to-discard is disabled. */
   canDiscard?: boolean;
+  /**
+   * When false, no drag handlers are attached — the note is a static element.
+   * Peer-drag mirroring still works so other users' drags animate correctly.
+   * RoomView flips this off on touch devices where drag is unreliable.
+   */
+  draggable?: boolean;
   onDiscard: (noteId: string) => void;
   onReturn: (noteId: string) => void;
   onHover: (target: DropTarget) => void;
@@ -32,6 +38,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
   showPulledBy,
   showAuthors,
   canDiscard = true,
+  draggable = true,
   onDiscard,
   onReturn,
   onHover,
@@ -44,7 +51,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
   const isPeerDragging = peerDrag !== undefined;
 
   const { bind, style, isDragging } = useDragNote({
-    enabled: !isPeerDragging,
+    enabled: draggable && !isPeerDragging,
     jarRect,
     discardRect,
     onDrop: (target) => {
@@ -106,6 +113,23 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
           onReturn={onReturn}
         />
       </animated.div>
+    );
+  }
+
+  // Static render for touch devices: no drag bind, no grab cursor, default
+  // touch-action so vertical scrolling inside the notes area still works.
+  if (!draggable) {
+    return (
+      <div className="draggable-pulled-note">
+        <PulledNote
+          note={note}
+          showPulledBy={showPulledBy}
+          showAuthors={showAuthors}
+          canDiscard={canDiscard}
+          onDiscard={onDiscard}
+          onReturn={onReturn}
+        />
+      </div>
     );
   }
 
