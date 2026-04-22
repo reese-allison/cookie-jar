@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 // Release-time DB setup for Fly / any fresh-cluster deploy.
 //
-// Fly Postgres starts empty — it doesn't run docker-entrypoint-initdb.d the
-// way the local docker-compose does, so src/server/db/schema.sql never gets
-// applied automatically. On first deploy, `users`/`jars`/etc. don't exist
-// and the first incremental migration fails with "relation does not exist".
+// Fly Postgres starts empty — it doesn't run docker-entrypoint-initdb.d
+// the way the local docker-compose does, so src/server/db/schema.sql
+// never gets applied automatically. This script handles both first-time
+// bootstrap AND ongoing deploys:
 //
-// This script:
-//   1. Connects to DATABASE_URL.
-//   2. Checks if the `users` table exists (our "is the schema loaded?" probe).
-//   3. If missing, runs schema.sql once to create the full baseline.
-//   4. Runs node-pg-migrate up.
+//   1. If `users` table is missing → apply schema.sql once.
+//   2. Ensure every existing migration is recorded in pgmigrations as
+//      already applied. Per CLAUDE.md policy, schema.sql is kept in
+//      sync with the current target state, so every migration file is
+//      already reflected there. Running them again would collide on
+//      constraints/indexes/columns that schema.sql created with
+//      implicit names (e.g. inline CHECK → auto-named notes_style_check,
+//      which migration 3 tries to ADD CONSTRAINT).
+//   3. Run node-pg-migrate up — picks up any genuinely new migrations
+//      added after the current baseline.
 //
-// Safe to run on every deploy. Step 2 short-circuits after the first time.
-// All 7 migration files use `... IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
-// so they're also idempotent against a fresh schema.sql-seeded database.
+// Idempotent; safe to run on every deploy. The "mark as applied" step
+// also rescues a partial pgmigrations state from a prior failed deploy.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -33,27 +37,63 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
+async function applySchemaIfMissing(pool) {
+  const probe = await pool.query("SELECT to_regclass('public.users') AS t");
+  if (probe.rows[0].t !== null) {
+    console.log("bootstrap: schema already present — skipping schema.sql");
+    return false;
+  }
+  console.log("bootstrap: users table missing — loading schema.sql");
+  const schema = readFileSync(schemaPath, "utf8");
+  await pool.query(schema);
+  console.log("bootstrap: schema.sql applied");
+  return true;
+}
+
+async function markExistingMigrationsApplied(pool) {
+  // Ensure the tracking table exists with the shape node-pg-migrate uses.
+  // Harmless on repeat deploys (CREATE ... IF NOT EXISTS).
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS pgmigrations (
+       id SERIAL PRIMARY KEY,
+       name VARCHAR(255) NOT NULL,
+       run_on TIMESTAMP NOT NULL
+     )`,
+  );
+
+  const files = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+
+  let inserted = 0;
+  for (const file of files) {
+    const name = file.replace(/\.sql$/, "");
+    const result = await pool.query(
+      `INSERT INTO pgmigrations (name, run_on)
+       SELECT $1, NOW()
+       WHERE NOT EXISTS (SELECT 1 FROM pgmigrations WHERE name = $1)`,
+      [name],
+    );
+    inserted += result.rowCount ?? 0;
+  }
+  return inserted;
+}
+
 async function main() {
   const pool = new pg.Pool({ connectionString: databaseUrl });
   try {
-    const probe = await pool.query(
-      "SELECT to_regclass('public.users') AS t",
-    );
-    const schemaPresent = probe.rows[0].t !== null;
-
-    if (!schemaPresent) {
-      console.log("bootstrap: users table missing — loading schema.sql");
-      const schema = readFileSync(schemaPath, "utf8");
-      await pool.query(schema);
-      console.log("bootstrap: schema.sql applied");
-    } else {
-      console.log("bootstrap: schema already present — skipping schema.sql");
+    await applySchemaIfMissing(pool);
+    const marked = await markExistingMigrationsApplied(pool);
+    if (marked > 0) {
+      console.log(
+        `bootstrap: marked ${marked} migration(s) as pre-applied (already reflected in schema.sql)`,
+      );
     }
   } finally {
     await pool.end();
   }
 
-  console.log("running node-pg-migrate up");
+  console.log("running node-pg-migrate up (for any migrations added after the baseline)");
   await migrationRunner({
     databaseUrl,
     dir: migrationsDir,
