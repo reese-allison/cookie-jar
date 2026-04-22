@@ -13,7 +13,7 @@
 #   - primary_region defaults to iad (Virginia); pick whatever's closest to
 #     your users with `fly regions list`.
 
-app = "cookie-jar"
+app = "the-cookie-jar"
 primary_region = "iad"
 
 [build]
@@ -22,8 +22,11 @@ primary_region = "iad"
 # Runs once per release in a throwaway Machine before the new image rolls
 # out to the real app Machines. If it fails the release aborts — safer than
 # letting new code start against an unmigrated schema.
+#
+# Invoked via `bun` explicitly because the oven/bun alpine image doesn't
+# ship a `node` binary, and node-pg-migrate's shebang is `#!/usr/bin/env node`.
 [deploy]
-  release_command = "node_modules/.bin/node-pg-migrate -m src/server/db/migrations up"
+  release_command = "bun node_modules/.bin/node-pg-migrate -m src/server/db/migrations up"
 
 [http_service]
   internal_port = 3001
