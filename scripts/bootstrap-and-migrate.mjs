@@ -68,10 +68,13 @@ async function markExistingMigrationsApplied(pool) {
   let inserted = 0;
   for (const file of files) {
     const name = file.replace(/\.sql$/, "");
+    // Explicit cast because pgmigrations.name is VARCHAR(255) — without it
+    // Postgres sees $1 used as both text (INSERT target) and varchar (WHERE
+    // comparison) and refuses to deduce a consistent type.
     const result = await pool.query(
       `INSERT INTO pgmigrations (name, run_on)
-       SELECT $1, NOW()
-       WHERE NOT EXISTS (SELECT 1 FROM pgmigrations WHERE name = $1)`,
+       SELECT $1::varchar, NOW()
+       WHERE NOT EXISTS (SELECT 1 FROM pgmigrations WHERE name = $1::varchar)`,
       [name],
     );
     inserted += result.rowCount ?? 0;
