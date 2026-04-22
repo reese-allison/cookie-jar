@@ -21,6 +21,14 @@ RUN bun run build
 FROM oven/bun:1.3.12-alpine AS runtime
 WORKDIR /app
 
+# Install Node.js alongside Bun. The app runs on Bun (fast startup, TS
+# native) but deploy-time migrations use node-pg-migrate, whose ESM bin
+# script uses a `tryImport` pattern that depends on Node's specific
+# MODULE_NOT_FOUND error shape — Bun's module resolver throws a different
+# error type and the try/catch doesn't catch it. Running node-pg-migrate
+# with node (instead of bun) sidesteps the issue entirely.
+RUN apk add --no-cache nodejs
+
 # Create the non-root user up front so every subsequent layer can own files
 # directly — avoids a fat final chown -R layer that duplicates node_modules
 # into the image.
