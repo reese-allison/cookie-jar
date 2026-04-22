@@ -39,6 +39,14 @@ export default defineConfig({
       workbox: {
         navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
+        // Without these three, a new SW version sits in "waiting" until every
+        // tab closes — so the OLD SW keeps serving cached index.html (with
+        // the old CSP header) to normal reloads, and only hard-reload
+        // (Cmd+Shift+R) bypasses it. The combo below makes new deploys
+        // propagate on the next normal reload.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
       },
       // Dev PWA is off by default; flip this on locally if you need to debug the SW.
       devOptions: { enabled: false },
