@@ -13,7 +13,11 @@ export function PullHistory({ entries, onRefresh, onClear }: PullHistoryProps) {
   const historyDirty = useNoteStore((s) => s.historyDirty);
 
   return (
-    <div className="pull-history">
+    // data-keep-menu-open: when this component is rendered inside the mobile
+    // RoomHeaderMenu, tapping the History toggle (or entries / Clear) must
+    // not collapse the outer hamburger — the history panel is a nested
+    // disclosure, not a terminal action.
+    <div className="pull-history" data-keep-menu-open="">
       <button
         type="button"
         className="btn--ghost pull-history__toggle"

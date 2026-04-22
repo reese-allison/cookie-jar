@@ -799,6 +799,32 @@ main:has(.room-view) {
   content: attr(title);
 }
 
+/* PullHistory inside the hamburger. Without these overrides:
+   - the `.pull-history` wrapper shrinks to its button's content because the
+     hamburger is a flex column (which bypasses the block default and makes
+     the right-anchored panel fall off-screen on narrow viewports).
+   - the panel itself is `position: absolute` + `right: 0`, which anchors it
+     to the button inside a floating hamburger — fine on desktop, broken on
+     a 360 px phone. Switch it to an inline disclosure that flows beneath
+     the toggle inside the menu. */
+:where(.room-header-menu__panel) .pull-history {
+  width: 100%;
+}
+
+:where(.room-header-menu__panel) .pull-history__toggle {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+:where(.room-header-menu__panel) .pull-history__panel {
+  position: static;
+  width: 100%;
+  margin-top: 0.25rem;
+  max-height: 50vh;
+  box-shadow: none;
+}
+
 /* ==========================================================================
    Members
    ========================================================================== */

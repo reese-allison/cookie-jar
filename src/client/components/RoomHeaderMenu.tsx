@@ -26,9 +26,13 @@ export function RoomHeaderMenu({ children }: RoomHeaderMenuProps) {
     };
   }, [open]);
 
-  // Close when any button inside the menu is clicked — mirrors OS overflow menus.
+  // Close when any button inside the menu is clicked — mirrors OS overflow
+  // menus. Exception: anything under [data-keep-menu-open] is a nested
+  // disclosure (e.g. PullHistory), where the button click should toggle that
+  // sub-panel instead of collapsing the whole overflow menu.
   const onPanelClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+    if (target.closest("[data-keep-menu-open]")) return;
     if (target.closest("button")) setOpen(false);
   };
 
