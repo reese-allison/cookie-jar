@@ -23,11 +23,12 @@ primary_region = "iad"
 # out to the real app Machines. If it fails the release aborts — safer than
 # letting new code start against an unmigrated schema.
 #
-# node-pg-migrate runs with node (installed in the Dockerfile alongside
-# bun) because its optional-import pattern depends on Node's specific
-# MODULE_NOT_FOUND error shape.
+# The bootstrap script applies schema.sql on first-ever deploy (Fly Postgres
+# starts empty — it doesn't run docker-entrypoint-initdb.d like compose
+# does), then runs node-pg-migrate for the incremental migrations. Both
+# steps are idempotent, so it's safe to run on every release.
 [deploy]
-  release_command = "node node_modules/.bin/node-pg-migrate -m src/server/db/migrations up"
+  release_command = "node scripts/bootstrap-and-migrate.mjs"
 
 [http_service]
   internal_port = 3001

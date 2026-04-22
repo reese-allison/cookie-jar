@@ -73,6 +73,8 @@ COPY --from=builder --chown=app:app /app/src/server ./src/server
 COPY --from=builder --chown=app:app /app/src/shared ./src/shared
 COPY --from=builder --chown=app:app /app/public ./public
 COPY --from=builder --chown=app:app /app/tsconfig.json /app/tsconfig.app.json /app/tsconfig.node.json ./
+# Deploy-time scripts (bootstrap-and-migrate runs from fly.toml's release_command).
+COPY --chown=app:app scripts ./scripts
 
 EXPOSE 3001
 
