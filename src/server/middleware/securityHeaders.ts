@@ -33,9 +33,13 @@ export function applySecurityHeaders(app: Express): void {
           defaultSrc: ["'none'"],
           baseUri: ["'self'"],
           scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          // index.html loads a Google Fonts stylesheet from fonts.googleapis.com,
+          // so styleSrc must include https:. 'unsafe-inline' covers Vite's
+          // dev-time inline styles and any component-level inline style attrs.
+          styleSrc: ["'self'", "'unsafe-inline'", "https:"],
           imgSrc: ["'self'", "data:", "https:"],
-          fontSrc: ["'self'", "data:"],
+          // Font files themselves come from fonts.gstatic.com (https:).
+          fontSrc: ["'self'", "data:", "https:"],
           // fetch() to /api, WebSocket (ws:/wss:) to /socket.io, both same-origin.
           connectSrc: ["'self'", "ws:", "wss:"],
           // User-provided jar sound packs are owner-hosted at arbitrary URLs.
