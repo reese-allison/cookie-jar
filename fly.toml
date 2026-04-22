@@ -1,0 +1,66 @@
+# Fly.io deployment config for cookie-jar.
+#
+# One Machine runs the app (Express + Socket.io + Vite-built client). Postgres
+# lives in a separate Fly Postgres cluster and Redis lives on Upstash — both
+# attached via secrets (DATABASE_URL, REDIS_URL). See DEPLOY.md for the
+# first-time setup walkthrough.
+#
+# Tuning notes:
+#   - 512 MB fits 50-room × 5-user load per the bench (peak ~360 MB). If you
+#     see OOM restarts, bump to 1 GB — it's a one-line change here.
+#   - min_machines_running = 1 keeps the socket server warm. auto_stop will
+#     hibernate when idle but auto_start brings it back on the next request.
+#   - primary_region defaults to iad (Virginia); pick whatever's closest to
+#     your users with `fly regions list`.
+
+app = "cookie-jar"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Runs once per release in a throwaway Machine before the new image rolls
+# out to the real app Machines. If it fails the release aborts — safer than
+# letting new code start against an unmigrated schema.
+[deploy]
+  release_command = "node_modules/.bin/node-pg-migrate -m src/server/db/migrations up"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # Hibernate when idle, wake on next request. Saves money for low-traffic
+  # hours while keeping at least one Machine warm so active socket sessions
+  # don't all die on scale-to-zero.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/api/live"
+    protocol = "http"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[env]
+  PORT = "3001"
+  LOG_LEVEL = "info"
+  # NODE_ENV is pinned in the Dockerfile to "production".
+
+# Secrets (set with `fly secrets set`):
+#   BETTER_AUTH_SECRET   — session signing secret; `openssl rand -hex 32`
+#   BETTER_AUTH_URL      — https://<app>.fly.dev or your custom domain
+#   CLIENT_URL           — same as BETTER_AUTH_URL in single-server deploys
+#   DATABASE_URL         — injected automatically by `fly postgres attach`
+#   REDIS_URL            — from Upstash dashboard (use the TLS URL, rediss://)
+#   GOOGLE_CLIENT_ID     — optional; leave unset to disable Google OAuth
+#   GOOGLE_CLIENT_SECRET — optional
+#   DISCORD_CLIENT_ID    — optional
+#   DISCORD_CLIENT_SECRET — optional

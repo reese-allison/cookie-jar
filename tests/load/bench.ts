@@ -10,7 +10,7 @@
  *   bun src/server/index.ts &                       # start server
  *   bun tests/load/bench.ts --rooms 50 --per-room 5 --duration 60
  */
-import type { ClientToServerEvents, ServerToClientEvents } from "../../src/shared/types";
+
 import { execSync } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
@@ -18,6 +18,7 @@ import { buildPoolConfig } from "../../src/server/db/pool";
 import * as jarQueries from "../../src/server/db/queries/jars";
 import * as roomQueries from "../../src/server/db/queries/rooms";
 import * as userQueries from "../../src/server/db/queries/users";
+import type { ClientToServerEvents, ServerToClientEvents } from "../../src/shared/types";
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -101,10 +102,11 @@ async function seedRooms(pool: pg.Pool, count: number): Promise<string[]> {
     });
     // Seed a handful of notes per jar so note:pull has something to pull.
     for (let n = 0; n < 20; n += 1) {
-      await pool.query(
-        "INSERT INTO notes (jar_id, text, style) VALUES ($1, $2, $3)",
-        [jar.id, `Bench note ${n}`, "sticky"],
-      );
+      await pool.query("INSERT INTO notes (jar_id, text, style) VALUES ($1, $2, $3)", [
+        jar.id,
+        `Bench note ${n}`,
+        "sticky",
+      ]);
     }
     const room = await roomQueries.createRoom(pool, { jarId: jar.id });
     codes.push(room.code);
@@ -311,8 +313,14 @@ async function main() {
     `Connected ${ctxs.length}/${args.rooms * args.perRoom} clients in ${connectMs.toFixed(0)}ms`,
   );
   console.log(
-    `connect p50=${pct(ctxs.map((c) => c.connectLatencyMs), 0.5).toFixed(0)}ms ` +
-      `p95=${pct(ctxs.map((c) => c.connectLatencyMs), 0.95).toFixed(0)}ms\n`,
+    `connect p50=${pct(
+      ctxs.map((c) => c.connectLatencyMs),
+      0.5,
+    ).toFixed(0)}ms ` +
+      `p95=${pct(
+        ctxs.map((c) => c.connectLatencyMs),
+        0.95,
+      ).toFixed(0)}ms\n`,
   );
 
   // Sample server every second while clients are active.
@@ -358,7 +366,9 @@ async function main() {
   );
   console.log(`Server RSS:    min=${rssMin}MB avg=${rssAvg.toFixed(1)}MB max=${rssMax}MB`);
   console.log(`Server CPU:    avg=${cpuAvg.toFixed(1)}% max=${cpuMax.toFixed(1)}%`);
-  console.log(`Baseline RSS:  ${baseline?.rssMB}MB  →  delta ${(rssMax - (baseline?.rssMB ?? 0)).toFixed(1)}MB`);
+  console.log(
+    `Baseline RSS:  ${baseline?.rssMB}MB  →  delta ${(rssMax - (baseline?.rssMB ?? 0)).toFixed(1)}MB`,
+  );
 
   console.log("\nCleaning up bench data...");
   await cleanupBenchData(pool);

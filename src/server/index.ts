@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import { createServer } from "node:http";
+import path from "node:path";
 import { toNodeHandler } from "better-auth/node";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -85,6 +87,42 @@ app.use("/api/rooms", readOrWrite, roomRouter);
 app.use("/api", (_req: express.Request, res: express.Response) => {
   res.status(404).json({ error: "Not found" });
 });
+
+// Serve the built client bundle + SPA fallback for single-VM deploys (Fly,
+// VPS, etc.). In dev, Vite serves the client on its own port and this block
+// is a no-op because `dist/` doesn't exist. We compute the path once at
+// startup so direct-linked client routes (`/room/ABC123`) return index.html
+// without a file-existence check per request.
+const distDir = path.resolve(process.cwd(), "dist");
+const distIndex = path.join(distDir, "index.html");
+if (fs.existsSync(distIndex)) {
+  app.use(
+    express.static(distDir, {
+      setHeaders(res, filepath) {
+        // index.html must revalidate so fresh deploys ship to users
+        // immediately. Every other Vite asset has a content hash in its
+        // filename and can be cached indefinitely.
+        if (filepath.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }),
+  );
+  // SPA fallback — any non-API, non-static route returns index.html so the
+  // client-side router handles deep links (e.g. room codes pasted into the
+  // address bar). /api, /sounds, and /socket.io are already handled above.
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) {
+      return next();
+    }
+    res.sendFile(distIndex);
+  });
+  logger.info({ distDir }, "serving built client bundle");
+} else {
+  logger.info({ distDir }, "no client bundle found — dev mode (Vite serves the client)");
+}
 
 // Terminal error handler. Catches unhandled route throws that bypass each
 // router's try/catch and anything the body parser rejects (malformed JSON,

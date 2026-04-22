@@ -39,15 +39,15 @@ COPY --chown=app:app package.json bun.lock ./
 #
 # Also drop client-only React + drag deps: the server never renders React,
 # and the drag animation libs are built into the client bundle already.
-# `node-pg-migrate` runs at deploy time (separate init container / job) so
-# we don't need it in the long-running server image.
+# `node-pg-migrate` is kept so Fly's `release_command` can apply pending
+# migrations in the same image before rolling a new version out.
 RUN bun install --frozen-lockfile --production && \
     cd node_modules && \
     rm -rf \
       @babel @biomejs @playwright @react-spring @rolldown \
       @testing-library @types @use-gesture @vitejs @vitest \
       concurrently dotenv-cli jsdom \
-      lightningcss-* node-pg-migrate react react-dom supertest \
+      lightningcss-* react react-dom supertest \
       terser typescript vite vite-plugin-pwa vitest zustand && \
     # Residual transitive dev-only cruft from the above:
     rm -rf \
