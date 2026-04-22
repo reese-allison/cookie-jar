@@ -133,4 +133,28 @@ describe("sealedNotesStore (Redis)", () => {
     await store.updateInBuffer("test-11", { ...makeNote("ghost"), id: "note-ghost" });
     expect(await store.length("test-11")).toBe(1);
   });
+
+  it("revealIfReady skips malformed entries instead of throwing", async () => {
+    const store = createSealedNotesStore(redis);
+    // Seed the Redis list directly with a valid blob followed by garbage.
+    // A JSON.parse crash inside the reveal would wedge the sealed workflow
+    // for the whole room; we want the good entry through and the bad one dropped.
+    const k = "room:test-12:sealed";
+    await redis.rpush(
+      k,
+      JSON.stringify(makeNote("A")),
+      "{not valid json",
+      JSON.stringify(makeNote("B")),
+    );
+    const revealed = await store.revealIfReady("test-12", 3);
+    expect(revealed.map((n) => n.text)).toEqual(["A", "B"]);
+  });
+
+  it("drain skips malformed entries instead of throwing", async () => {
+    const store = createSealedNotesStore(redis);
+    const k = "room:test-13:sealed";
+    await redis.rpush(k, "{broken", JSON.stringify(makeNote("B")));
+    const drained = await store.drain("test-13");
+    expect(drained.map((n) => n.text)).toEqual(["B"]);
+  });
 });

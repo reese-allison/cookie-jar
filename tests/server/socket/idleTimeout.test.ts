@@ -82,6 +82,26 @@ describe("IdleTimeoutManager — multi-pod (Redis)", () => {
     manager.stop("idle-test-1");
   });
 
+  it("caps the rescheduled delay at the configured duration when TTL is huge", async () => {
+    // Regression: a stale alive key with a much-larger TTL (e.g. a manual
+    // refresh or migration leftover) must not stretch the timer past the
+    // room's configured duration.
+    const manager = new IdleTimeoutManager(redis);
+    const cb = vi.fn();
+    manager.start("idle-test-4", 40 / 60_000, cb);
+    // Seed a 10-second TTL — vastly longer than the room's ~40ms duration.
+    await redis.set("room:idle-test-4:alive", "1", "PX", 10_000);
+    // Wait long enough for the first fire + one capped reschedule to both
+    // elapse (local timer fires at ~40ms, reschedules for another cap of
+    // ~40ms). Before the fix, the reschedule would be ~5s and cb would not
+    // fire here.
+    await new Promise((r) => setTimeout(r, 150));
+    // Clear the alive key so the next fire's SET-NX close-lock path runs.
+    await redis.del("room:idle-test-4:alive");
+    await new Promise((r) => setTimeout(r, 120));
+    expect(cb).toHaveBeenCalledWith("idle-test-4");
+  });
+
   it("fires onTimeout when the room is actually idle cluster-wide", async () => {
     const manager = new IdleTimeoutManager(redis);
     const cb = vi.fn();

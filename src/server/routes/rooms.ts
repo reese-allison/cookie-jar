@@ -59,7 +59,8 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    const viewer = { userId: getUser(req).id, email: getUser(req).email };
+    const u = getUser(req);
+    const viewer = { userId: u.id, email: u.email, emailVerified: u.emailVerified };
     if (!canAccessJar(jar, viewer)) {
       res.status(403).json({ error: "Not authorized to create a room for this jar" });
       return;

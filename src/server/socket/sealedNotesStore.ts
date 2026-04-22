@@ -49,6 +49,27 @@ function key(roomId: string): string {
 }
 
 /**
+ * Parse a batch of serialized notes from Redis, skipping any malformed
+ * entries rather than crashing the whole reveal. A single bad blob (from
+ * a partial write, schema-drift push, or manual tampering) would otherwise
+ * surface as a JSON.parse throw inside the broadcast path and wedge the
+ * sealed workflow for the whole room.
+ */
+function parseNoteEntries(raw: string[]): Note[] {
+  const notes: Note[] = [];
+  for (const entry of raw) {
+    try {
+      notes.push(JSON.parse(entry) as Note);
+    } catch {
+      // Malformed entry — drop it. The Lua reveal already cleared the list,
+      // so losing it here is acceptable; logging is noisy because a torn
+      // write during partition recovery can produce several at once.
+    }
+  }
+  return notes;
+}
+
+/**
  * Atomic "reveal if ready" — checks length, returns + deletes only if at
  * threshold. Without this Lua script, two pods checking LLEN + DEL could both
  * try to emit the reveal; with it, only the pod that executes the Lua wins.
@@ -103,7 +124,7 @@ export function createSealedNotesStore(
 
     async revealIfReady(roomId, threshold) {
       const raw = await client[COMMAND_NAME](key(roomId), String(threshold));
-      return raw.map((s) => JSON.parse(s) as Note);
+      return parseNoteEntries(raw);
     },
 
     async drain(roomId) {
@@ -115,7 +136,7 @@ export function createSealedNotesStore(
       // from the owner and is rate-limited to 1 per 3s.
       const raw = await redis.lrange(k, 0, -1);
       if (raw.length > 0) await redis.del(k);
-      return raw.map((s) => JSON.parse(s) as Note);
+      return parseNoteEntries(raw);
     },
 
     async remove(roomId, noteId) {

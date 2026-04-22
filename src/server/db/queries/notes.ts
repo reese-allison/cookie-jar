@@ -209,17 +209,32 @@ export async function pullRandomNote(
   pulledBy?: string,
   pulledByUserId?: string,
 ): Promise<Note | null> {
+  // OFFSET-based random pull: count the pool, pick a random offset, then
+  // UPDATE that single row with FOR UPDATE SKIP LOCKED so concurrent pullers
+  // don't block each other. `ORDER BY random()` did a full sort of every
+  // in_jar note per pull — fine at small caps but pathological as jars grow.
+  // The count + OFFSET path is O(index scan + 1 row fetch) at any jar size.
+  //
+  // Uniformity note: if a concurrent puller is mid-transaction on the offset
+  // we pick, SKIP LOCKED falls through to the next row in the UPDATE's
+  // planner ordering. That's a small bias under heavy contention, but the
+  // jar is empty-or-near-empty much faster than the bias matters.
   const { rows } = await db.query(
     withAuthorJoin(`
-      UPDATE notes
-      SET state = 'pulled', pulled_by = $2, pulled_by_user_id = $3, updated_at = now()
-      WHERE id = (
+      WITH pool AS (
+        SELECT count(*)::int AS n FROM notes
+        WHERE jar_id = $1 AND state = 'in_jar'
+      ),
+      target AS (
         SELECT id FROM notes
         WHERE jar_id = $1 AND state = 'in_jar'
-        ORDER BY random()
+        OFFSET floor(random() * (SELECT GREATEST(n, 1) FROM pool))::int
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
+      UPDATE notes
+      SET state = 'pulled', pulled_by = $2, pulled_by_user_id = $3, updated_at = now()
+      WHERE id = (SELECT id FROM target)
       RETURNING *
     `),
     [jarId, pulledBy ?? null, pulledByUserId ?? null],

@@ -5,6 +5,11 @@ import { auth } from "../auth";
 export interface AuthUser {
   id: string;
   email: string;
+  /**
+   * Whether the provider has verified this email. OAuth-issued sessions
+   * arrive verified; unverified signups must not satisfy `allowedEmails`.
+   */
+  emailVerified: boolean;
   name: string;
   image?: string;
 }
@@ -38,6 +43,7 @@ export async function requireAuth(
     req.user = {
       id: session.user.id,
       email: session.user.email,
+      emailVerified: session.user.emailVerified === true,
       name: session.user.name,
       image: session.user.image ?? undefined,
     };
@@ -82,6 +88,7 @@ export async function attachUser(
       req.user = {
         id: session.user.id,
         email: session.user.email,
+        emailVerified: session.user.emailVerified === true,
         name: session.user.name,
         image: session.user.image ?? undefined,
       };

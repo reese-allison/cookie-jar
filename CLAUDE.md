@@ -139,9 +139,11 @@ Prod uses Google + Discord OAuth; credentials go in `.env` (gitignored). See `.e
 
 ## Socket Events
 
-Client → Server: `room:join`, `room:leave`, `room:lock`, `room:unlock`, `cursor:move`, `note:add`, `note:pull`, `note:discard`, `note:return`, `note:drag`, `note:drag_end`, `history:get`, `history:clear`, `jar:refresh`
+Client → Server: `room:join`, `room:leave`, `cursor:move`, `note:add`, `note:pull`, `note:discard`, `note:return`, `note:returnAll`, `note:discardAll`, `note:drag`, `note:drag_end`, `history:get`, `history:clear`, `jar:refresh`
 
-Server → Client: `room:state`, `room:member_joined`, `room:member_left`, `room:locked`, `room:unlocked`, `room:error`, `cursor:moved`, `note:state`, `note:added`, `note:pulled`, `note:discarded`, `note:returned`, `note:sealed`, `note:reveal`, `note:drag`, `note:drag_end`, `pull:rejected`, `history:list`, `rate_limited`, `auth:expired`
+Server → Client: `room:state`, `room:member_joined`, `room:member_left`, `room:error`, `cursor:moved`, `note:state`, `note:added`, `note:pulled`, `note:discarded`, `note:returned`, `note:updated`, `note:sealed`, `note:reveal`, `note:drag`, `note:drag_end`, `pull:rejected`, `history:list`, `rate_limited`, `auth:expired`
+
+The dedicated `room:lock` / `room:unlock` events (and their `room:locked` / `room:unlocked` counterparts) have been retired — lock state is a `jarConfig.locked` field toggled via `PATCH /api/jars/:id` + `jar:refresh`.
 
 `jar:refresh` is emitted by the owner after a REST PATCH to `/api/jars/:id`. The server now broadcasts a *compact* `note:state` (config + appearance + counts, **not** the full pulled-notes array) so a 50-user room doesn't eat 1 MB of fanout on a config tweak. Clients preserve their existing pulled notes when `pulledNotes` is absent. `note:drag` / `note:drag_end` are volatile relays for mirroring active drags to peers — no DB writes. `rate_limited` fires when a socket exceeds its per-event budget. `auth:expired` fires just before the server disconnects a socket whose underlying session has expired.
 

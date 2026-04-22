@@ -5,16 +5,22 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 // Stub the auth middleware so each test controls req.user without a real
 // better-auth session. Must run before importing the routers.
-const authState: { user: { id: string; email: string; name: string } | null } = {
+interface MockUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+}
+const authState: { user: MockUser | null } = {
   user: null,
 };
 vi.mock("../../../src/server/middleware/requireAuth", () => ({
-  getUser: (req: { user?: { id: string; email: string; name: string } }) => {
+  getUser: (req: { user?: MockUser }) => {
     if (!req.user) throw new Error("requireAuth middleware not applied");
     return req.user;
   },
   requireAuth: (
-    req: { user?: typeof authState.user },
+    req: { user?: MockUser | null },
     res: { status: (n: number) => { json: (b: unknown) => void } },
     next: () => void,
   ) => {
@@ -25,7 +31,7 @@ vi.mock("../../../src/server/middleware/requireAuth", () => ({
     req.user = authState.user;
     next();
   },
-  attachUser: (req: { user?: typeof authState.user }, _res: unknown, next: () => void) => {
+  attachUser: (req: { user?: MockUser | null }, _res: unknown, next: () => void) => {
     if (authState.user) req.user = authState.user;
     next();
   },
@@ -52,13 +58,28 @@ app.use("/api/notes", noteRouter);
 app.use("/api/rooms", roomRouter);
 
 function asOwner(): void {
-  authState.user = { id: ownerId, email: "rest-owner@example.com", name: "Owner" };
+  authState.user = {
+    id: ownerId,
+    email: "rest-owner@example.com",
+    emailVerified: true,
+    name: "Owner",
+  };
 }
 function asFriend(): void {
-  authState.user = { id: friendId, email: "rest-friend@example.com", name: "Friend" };
+  authState.user = {
+    id: friendId,
+    email: "rest-friend@example.com",
+    emailVerified: true,
+    name: "Friend",
+  };
 }
 function asStranger(): void {
-  authState.user = { id: strangerId, email: "rest-stranger@example.com", name: "Stranger" };
+  authState.user = {
+    id: strangerId,
+    email: "rest-stranger@example.com",
+    emailVerified: true,
+    name: "Stranger",
+  };
 }
 function asAnon(): void {
   authState.user = null;

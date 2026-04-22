@@ -3,8 +3,16 @@ import type { Jar } from "@shared/types";
 export interface AccessViewer {
   /** better-auth user id, or null for anonymous. */
   userId: string | null;
-  /** Verified email for the signed-in user, if known. */
+  /** Email on the signed-in session, if known. */
   email: string | null;
+  /**
+   * Whether the provider has verified this email belongs to the signed-in
+   * user. OAuth-issued sessions (Google, Discord) arrive verified; an
+   * email+password signup is not verified until the user confirms.
+   * Required for `allowedEmails` matches — otherwise anyone could register
+   * `alice@example.com` (unverified) and step into an allowlisted jar.
+   */
+  emailVerified: boolean;
 }
 
 /**
@@ -24,6 +32,8 @@ export interface AccessViewer {
  *
  * Emails compare case-insensitively; the sanitizer already stores them
  * lowercased, so this is a belt-and-suspenders .toLowerCase() on the viewer.
+ * Email matches additionally require `emailVerified` to be true — an
+ * unverified signup cannot satisfy an email allowlist.
  */
 export function canAccessJar(jar: Jar, viewer: AccessViewer): boolean {
   if (viewer.userId && jar.ownerId === viewer.userId) return true;
@@ -34,7 +44,9 @@ export function canAccessJar(jar: Jar, viewer: AccessViewer): boolean {
   if (allowedIds.length === 0 && allowedEmails.length === 0) return false;
 
   if (viewer.userId && allowedIds.includes(viewer.userId)) return true;
-  if (viewer.email && allowedEmails.includes(viewer.email.toLowerCase())) return true;
+  if (viewer.emailVerified && viewer.email && allowedEmails.includes(viewer.email.toLowerCase())) {
+    return true;
+  }
   return false;
 }
 

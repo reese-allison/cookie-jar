@@ -65,6 +65,10 @@ export function RoomCodeEntry({
               maxLength={6}
               className="room-code-input"
               autoComplete="off"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="text"
               disabled={isJoining}
             />
             {user ? (

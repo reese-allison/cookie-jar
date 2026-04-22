@@ -83,7 +83,8 @@ jarRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
 // access to). Registered before /:id so "mine" isn't matched as an id.
 jarRouter.get("/mine", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const viewer = { userId: getUser(req).id, email: getUser(req).email };
+    const u = getUser(req);
+    const viewer = { userId: u.id, email: u.email, emailVerified: u.emailVerified };
     const [owned, starred] = await Promise.all([
       jarQueries.listOwnedJarsWithRooms(pool, viewer.userId),
       starQueries.listStarredJarsWithRooms(pool, viewer.userId),
@@ -110,7 +111,8 @@ jarRouter.get("/mine", requireAuth, async (req: AuthenticatedRequest, res) => {
 jarRouter.put("/:id/star", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const jarId = asString(req.params.id);
-    const viewer = { userId: getUser(req).id, email: getUser(req).email };
+    const u = getUser(req);
+    const viewer = { userId: u.id, email: u.email, emailVerified: u.emailVerified };
     const jar = await jarQueries.getJarById(pool, jarId);
     if (!jar) {
       res.status(404).json({ error: "Jar not found" });
@@ -160,7 +162,13 @@ jarRouter.get("/:id", attachUser, async (req: AuthenticatedRequest, res) => {
       res.status(404).json({ error: "Jar not found" });
       return;
     }
-    if (!canAccessJar(jar, { userId: req.user?.id ?? null, email: req.user?.email ?? null })) {
+    if (
+      !canAccessJar(jar, {
+        userId: req.user?.id ?? null,
+        email: req.user?.email ?? null,
+        emailVerified: req.user?.emailVerified === true,
+      })
+    ) {
       res.status(403).json({ error: "Not authorized to view this jar" });
       return;
     }

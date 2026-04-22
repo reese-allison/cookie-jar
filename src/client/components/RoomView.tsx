@@ -1,5 +1,4 @@
 import type {
-  CursorPosition,
   JarAppearance,
   JarConfig,
   Note,
@@ -7,25 +6,24 @@ import type {
   PullHistoryEntry,
   Room,
 } from "@shared/types";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CopyableRoomCode } from "./CopyableRoomCode";
-import { Cursor } from "./Cursor";
 import { DiscardBin } from "./DiscardBin";
 import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
 import { JarSettingsDrawer } from "./JarSettingsDrawer";
 import { NoteForm } from "./NoteForm";
 import { PullHistory } from "./PullHistory";
+import { RemoteCursors } from "./RemoteCursors";
 import { RoomHeaderMenu } from "./RoomHeaderMenu";
 import { SealedNoteStack } from "./SealedNoteStack";
 import { SoundToggle } from "./SoundToggle";
 
 interface RoomViewProps {
   room: Room;
-  cursors: Map<string, CursorPosition>;
   inJarCount: number;
   pulledNotes: Note[];
   isAdding: boolean;
@@ -62,7 +60,6 @@ interface RoomViewProps {
 
 export function RoomView({
   room,
-  cursors,
   inJarCount,
   pulledNotes,
   isAdding,
@@ -131,15 +128,6 @@ export function RoomView({
     },
     [onMouseMove],
   );
-
-  // Build a members-by-id lookup once per members change. Without this, every
-  // cursor packet would trigger N × M `.find` calls (N peers × M members) as
-  // the cursors Map updates re-render this component.
-  const memberById = useMemo(() => {
-    const map = new Map<string, (typeof room.members)[number]>();
-    for (const m of room.members) map.set(m.id, m);
-    return map;
-  }, [room.members]);
 
   // Locked lives on jarConfig now; "read-mostly" means contributors can
   // still pull/return but add and discard are blocked. Viewers can't
@@ -249,21 +237,8 @@ export function RoomView({
 
         {canWrite && <DiscardBin ref={discardRef} isHighlighted={hoverTarget === "discard"} />}
 
-        {/* Remote cursors — hidden on touch devices where users have no pointer */}
-        {!isTouch &&
-          [...cursors.entries()].map(([userId, cursor]) => {
-            const member = memberById.get(userId);
-            if (!member) return null;
-            return (
-              <Cursor
-                key={userId}
-                x={cursor.x}
-                y={cursor.y}
-                displayName={member.displayName}
-                color={member.color}
-              />
-            );
-          })}
+        {/* Cursors subscribe at the leaf so 15-Hz peer packets don't re-render RoomView. */}
+        <RemoteCursors members={room.members} hidden={isTouch} />
       </div>
     </div>
   );

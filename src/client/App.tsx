@@ -28,16 +28,19 @@ function App() {
     ? { displayName: session.user.name, image: session.user.image ?? undefined }
     : null;
 
-  // Socket must be owned by App — not by the screens — so it survives the
-  // Landing → InRoom transition that happens when `room:state` arrives.
-  // Regression guard: tests/client/App.socketLifetime.test.tsx.
-  const socketApi = useSocket();
-
   // Sign-in modal lives at the App root so it can be opened from any surface
-  // (TopBar, viewer notice in a room) without context gymnastics.
+  // (TopBar, viewer notice in a room, auth:expired handler) without context
+  // gymnastics.
   const [signInOpen, setSignInOpen] = useState(false);
   const openSignIn = useCallback(() => setSignInOpen(true), []);
   const closeSignIn = useCallback(() => setSignInOpen(false), []);
+
+  // Socket must be owned by App — not by the screens — so it survives the
+  // Landing → InRoom transition that happens when `room:state` arrives.
+  // Regression guard: tests/client/App.socketLifetime.test.tsx. The
+  // onAuthExpired hook opens the sign-in modal automatically — the error
+  // toast alone auto-dismisses in 6 s and a busy user would miss it.
+  const socketApi = useSocket({ onAuthExpired: openSignIn });
 
   return (
     <ErrorBoundary>
@@ -118,7 +121,8 @@ function InRoomScreen({
 }) {
   const room = useRoomStore((s) => s.room);
   const isConnected = useRoomStore((s) => s.isConnected);
-  const cursors = useRoomStore((s) => s.cursors);
+  // NB: `cursors` intentionally NOT subscribed here — RemoteCursors reads
+  // it directly at the leaf so peer packets don't re-render this whole tree.
   const myId = useRoomStore((s) => s.myId);
   const setError = useRoomStore((s) => s.setError);
   const inJarCount = useNoteStore((s) => s.inJarCount);
@@ -195,7 +199,6 @@ function InRoomScreen({
       />
       <RoomView
         room={room}
-        cursors={cursors}
         inJarCount={inJarCount}
         pulledNotes={pulledNotes}
         isAdding={isAdding}

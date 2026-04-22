@@ -130,19 +130,32 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
   // Periodic check for expired sessions on long-lived sockets.
   const sessionChecker = startSessionExpiryChecker({ io, logger });
 
-  // One-shot sweep for zombie rooms — open in the DB, empty in Redis. Mostly
-  // catches pre-`close-on-last-leave` legacy rows on the first deploy after
-  // the fix; ongoing it covers the rare crash-mid-session case. Delayed so a
-  // reconnecting client's presence write lands first. Skip in tests so the
-  // setTimeout doesn't keep vitest hanging open.
-  let zombieSweepHandle: ReturnType<typeof setTimeout> | null = null;
+  // Periodic sweep for zombie rooms — open in the DB, empty in Redis. Catches
+  // pre-`close-on-last-leave` legacy rows AND the ongoing crash-mid-session
+  // case: a pod killed without SIGTERM leaves its local idle timer dead and
+  // the room row stuck at state='open' until something notices. Running on
+  // an interval (not one-shot at boot) means a long-lived pod covers leaks
+  // that happen during its lifetime, not just at startup.
+  //
+  // Initial run is delayed so a reconnecting client's presence write lands
+  // first. Subsequent runs happen at ZOMBIE_SWEEP_INTERVAL_MS. Skipped in
+  // tests so the interval doesn't keep vitest hanging open.
+  const ZOMBIE_SWEEP_INITIAL_DELAY_MS = 30_000;
+  const ZOMBIE_SWEEP_INTERVAL_MS = 5 * 60_000;
+  let zombieSweepInitialHandle: ReturnType<typeof setTimeout> | null = null;
+  let zombieSweepIntervalHandle: ReturnType<typeof setInterval> | null = null;
+  const runZombieSweep = () => {
+    closeZombieRooms(pool, deps.presenceStore).catch((err) => {
+      logger.error({ err }, "zombie room sweep failed");
+    });
+  };
   if (process.env.NODE_ENV !== "test") {
-    zombieSweepHandle = setTimeout(() => {
-      closeZombieRooms(pool, deps.presenceStore).catch((err) => {
-        logger.error({ err }, "zombie room sweep failed");
-      });
-    }, 30_000);
-    zombieSweepHandle.unref?.();
+    zombieSweepInitialHandle = setTimeout(() => {
+      runZombieSweep();
+      zombieSweepIntervalHandle = setInterval(runZombieSweep, ZOMBIE_SWEEP_INTERVAL_MS);
+      zombieSweepIntervalHandle.unref?.();
+    }, ZOMBIE_SWEEP_INITIAL_DELAY_MS);
+    zombieSweepInitialHandle.unref?.();
   }
 
   return {
@@ -155,7 +168,8 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
      * the underlying HTTP server) before invoking this cleanup.
      */
     async stop() {
-      if (zombieSweepHandle) clearTimeout(zombieSweepHandle);
+      if (zombieSweepInitialHandle) clearTimeout(zombieSweepInitialHandle);
+      if (zombieSweepIntervalHandle) clearInterval(zombieSweepIntervalHandle);
       sessionChecker.stop();
       roomStateCache.stop();
       await kickBus.close();

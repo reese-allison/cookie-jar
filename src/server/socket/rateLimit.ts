@@ -19,6 +19,7 @@ const CONFIGS: Record<string, BucketConfig> = {
   "note:discard": { ratePerSec: 2, burst: 4 },
   "note:return": { ratePerSec: 2, burst: 4 },
   "history:get": { ratePerSec: 0.2, burst: 1 }, // 1 per 5 s
+  "history:clear": { ratePerSec: 1 / 3, burst: 1 }, // 1 per 3 s — destructive, owner-only
   "jar:refresh": { ratePerSec: 1 / 3, burst: 1 }, // 1 per 3 s
   // Bulk ops touch every pulled row + fan out per-note broadcasts. Keep them
   // tight so repeated clicks don't hammer the DB.
@@ -40,13 +41,21 @@ export interface SocketRateLimiter {
 }
 
 /**
+ * Monotonic millisecond clock. `performance.now()` is unaffected by wall-
+ * clock jumps (NTP adjustments, manual time changes) so token refill math
+ * stays correct even if the host's wall clock skips forward or backward.
+ * Returns a millisecond value comparable across calls on the same process.
+ */
+const monotonicMs = (): number => performance.now();
+
+/**
  * Module-level singleton shared across all socket registrations on this pod.
  * Uses in-memory buckets — fine for single-pod correctness. For multi-pod
  * we'd move to Redis counters (Phase 3 work).
  */
 export const socketRateLimiter = createSocketRateLimiter();
 
-export function createSocketRateLimiter(clock: () => number = Date.now): SocketRateLimiter {
+export function createSocketRateLimiter(clock: () => number = monotonicMs): SocketRateLimiter {
   const buckets = new Map<string, Bucket>();
   const key = (socketId: string, event: string) => `${socketId}:${event}`;
 

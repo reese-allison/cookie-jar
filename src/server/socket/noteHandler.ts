@@ -303,6 +303,9 @@ export function registerNoteHandlers(
   socket.on(
     "history:clear",
     safe(async () => {
+      // Rate-limit owner-only destructive ops too — a misbehaving admin
+      // client shouldn't be able to hammer the DELETE path unbounded.
+      if (!guardRate("history:clear")) return;
       if (!ctx.jarId || !ctx.roomId || !ctx.isAuthenticated) return;
       if (ctx.role !== "owner") {
         socket.emit("room:error", "Only the jar owner can clear history");

@@ -7,12 +7,14 @@ export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
+  let failure: unknown;
   try {
     await client.query("BEGIN");
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
   } catch (err) {
+    failure = err;
     try {
       await client.query("ROLLBACK");
     } catch {
@@ -20,6 +22,13 @@ export async function withTransaction<T>(
     }
     throw err;
   } finally {
-    client.release();
+    // Pass the error to release() on failure so node-postgres destroys the
+    // client instead of returning a possibly-broken connection to the pool.
+    // A connection aborted mid-statement can be in an unknown protocol state.
+    if (failure !== undefined) {
+      client.release(failure as Error);
+    } else {
+      client.release();
+    }
   }
 }

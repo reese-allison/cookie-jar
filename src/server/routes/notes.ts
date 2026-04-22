@@ -53,7 +53,7 @@ function assertUnlocked(jar: Jar, res: Response): boolean {
  */
 async function loadReadableJar(
   jarId: string,
-  viewer: { userId: string | null; email: string | null },
+  viewer: { userId: string | null; email: string | null; emailVerified: boolean },
   res: Response,
 ): Promise<Jar | null> {
   const jar = await jarQueries.getJarById(pool, jarId);
@@ -128,7 +128,11 @@ noteRouter.get("/", attachUser, async (req: AuthenticatedRequest, res) => {
     }
     const jar = await loadReadableJar(
       jarId,
-      { userId: req.user?.id ?? null, email: req.user?.email ?? null },
+      {
+        userId: req.user?.id ?? null,
+        email: req.user?.email ?? null,
+        emailVerified: req.user?.emailVerified === true,
+      },
       res,
     );
     if (!jar) return;
@@ -324,7 +328,11 @@ noteRouter.get("/export", attachUser, async (req: AuthenticatedRequest, res) => 
     }
     const jar = await loadReadableJar(
       jarId,
-      { userId: req.user?.id ?? null, email: req.user?.email ?? null },
+      {
+        userId: req.user?.id ?? null,
+        email: req.user?.email ?? null,
+        emailVerified: req.user?.emailVerified === true,
+      },
       res,
     );
     if (!jar) return;

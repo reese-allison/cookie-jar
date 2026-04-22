@@ -80,12 +80,13 @@ export class IdleTimeoutManager {
   private scheduleLocal(
     roomId: string,
     config: { durationMs: number; onTimeout: TimeoutCallback; lastAliveRefreshAt: number },
+    delayMs: number = config.durationMs,
   ): void {
     const timeout = setTimeout(() => {
       this.onFire(roomId).catch((err: unknown) => {
         logger.error({ err, roomId }, "idle-timeout onFire failed");
       });
-    }, config.durationMs);
+    }, delayMs);
     this.timers.set(roomId, { ...config, timeout });
   }
 
@@ -101,9 +102,18 @@ export class IdleTimeoutManager {
     }
 
     // Someone on another pod moved their cursor recently → reschedule locally.
-    const alive = await this.redis.exists(`room:${roomId}:alive`);
-    if (alive) {
-      this.scheduleLocal(roomId, timer);
+    // Use the alive-key's remaining TTL instead of a fresh full `durationMs`,
+    // otherwise a room with sporadic activity can stay "open" for up to one
+    // extra duration past its real last activity. The alive key is written
+    // with TTL = 2 × durationMs (see refreshAlive), so remaining/2 gives us
+    // back roughly the idle window from the most recent activity.
+    const aliveTtlMs = await this.redis.pttl(`room:${roomId}:alive`);
+    if (aliveTtlMs > 0) {
+      const halved = Math.max(1, Math.floor(aliveTtlMs / 2));
+      // Cap at the configured duration so a bad TTL (e.g. a manual refresh
+      // that over-set it) can't stretch the timer past the room's policy.
+      const remainingMs = Math.min(halved, timer.durationMs);
+      this.scheduleLocal(roomId, { ...timer, durationMs: timer.durationMs }, remainingMs);
       return;
     }
 

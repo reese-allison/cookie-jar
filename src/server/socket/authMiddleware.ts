@@ -1,12 +1,14 @@
 import { fromNodeHeaders } from "better-auth/node";
 import type { Socket } from "socket.io";
 import { auth } from "../auth";
+import { logger } from "../logger";
 
 export interface SocketAuthData {
   user: {
     id: string;
     displayName: string;
     email: string;
+    emailVerified: boolean;
     image?: string;
   } | null;
   /**
@@ -44,6 +46,7 @@ export async function socketAuthMiddleware(
         id: session.user.id,
         displayName: session.user.name,
         email: session.user.email,
+        emailVerified: session.user.emailVerified === true,
         image: session.user.image ?? undefined,
       };
       const expiresAt = session.session?.expiresAt;
@@ -55,8 +58,12 @@ export async function socketAuthMiddleware(
     }
 
     next();
-  } catch {
-    // Auth failure doesn't reject the connection — user is treated as anonymous
+  } catch (err) {
+    // Auth failure doesn't reject the connection — user is treated as anonymous.
+    // Log at warn so a transient better-auth/Postgres/Redis outage that demotes
+    // real users to viewer is visible in production logs (not silently
+    // swallowed). Fail-closed behavior is correct; silence is the bug.
+    logger.warn({ err }, "socketAuthMiddleware: session lookup failed, treating as anonymous");
     (socket.data as SocketAuthData).user = null;
     next();
   }

@@ -9,9 +9,45 @@ import { logger } from "./logger";
 // auth volume is much lower than app traffic.
 export const authPool = new pg.Pool({ ...buildPoolConfig(), max: 5 });
 
-// Anonymous sign-in is dev-only. In production we require a real OAuth provider.
-const isDev = process.env.NODE_ENV !== "production";
-const devPlugins = isDev
+/**
+ * Anonymous sign-in is gated to *explicit* dev/test environments only.
+ * Production, staging, previews, and ambiguous states (env unset, custom
+ * names like "prod") all fail closed — enabling anon on those surfaces
+ * would let anyone mint a session.
+ */
+export function shouldEnableAnonPlugin(env: string | undefined): boolean {
+  return env === "development" || env === "test";
+}
+
+/**
+ * Resolve the better-auth session-signing secret. Falls back to a
+ * well-known dev string only when NODE_ENV is explicitly "development"
+ * or "test". An unset NODE_ENV is treated as prod-like and *must* set
+ * BETTER_AUTH_SECRET — otherwise a misconfigured deploy would sign
+ * sessions with a public fallback.
+ */
+export function resolveAuthSecret(
+  env: string | undefined,
+  secret: string | undefined,
+  warn: (msg: string) => void = () => {},
+): string {
+  if (secret) return secret;
+  if (env === "development" || env === "test") {
+    if (env !== "test") {
+      warn(
+        "BETTER_AUTH_SECRET unset — falling back to the well-known dev secret. " +
+          "Set BETTER_AUTH_SECRET before exposing this server.",
+      );
+    }
+    return "dev-only-secret-not-for-production";
+  }
+  throw new Error(
+    `BETTER_AUTH_SECRET must be set when NODE_ENV="${env ?? "(unset)"}". ` +
+      "Only NODE_ENV=development (with a local secret) or NODE_ENV=test may omit it.",
+  );
+}
+
+const devPlugins = shouldEnableAnonPlugin(process.env.NODE_ENV)
   ? [
       anonymous({
         // Our users table is snake_case; override the plugin's default camelCase column.
@@ -19,7 +55,7 @@ const devPlugins = isDev
       }),
     ]
   : [];
-if (isDev) {
+if (shouldEnableAnonPlugin(process.env.NODE_ENV)) {
   logger.warn("anonymous sign-in enabled (POST /api/auth/sign-in/anonymous)");
 }
 
@@ -33,30 +69,9 @@ export const auth = betterAuth({
       generateId: () => randomUUID(),
     },
   },
-  secret: (() => {
-    const secret = process.env.BETTER_AUTH_SECRET;
-    if (secret) return secret;
-    // Fail-closed on anything that isn't clearly local dev. Tests can't set
-    // env vars cleanly across the vitest/bun boundary so they get the fallback.
-    // Anything that isn't production but *also* isn't test (staging, "dev"
-    // deployed to a real host, ephemeral previews) must set the env var —
-    // otherwise sessions are signed with the well-known repo fallback and are
-    // trivially forgeable.
-    const env = process.env.NODE_ENV;
-    if (env && env !== "development" && env !== "test") {
-      throw new Error(
-        `BETTER_AUTH_SECRET must be set when NODE_ENV="${env}". ` +
-          "Only NODE_ENV=development (with a local secret) or NODE_ENV=test may omit it.",
-      );
-    }
-    if (env !== "test") {
-      logger.warn(
-        "BETTER_AUTH_SECRET unset — falling back to the well-known dev secret. " +
-          "Set BETTER_AUTH_SECRET before exposing this server.",
-      );
-    }
-    return "dev-only-secret-not-for-production";
-  })(),
+  secret: resolveAuthSecret(process.env.NODE_ENV, process.env.BETTER_AUTH_SECRET, (msg) =>
+    logger.warn(msg),
+  ),
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3001",
   trustedOrigins: [process.env.CLIENT_URL ?? "http://localhost:5175"],
   socialProviders: {

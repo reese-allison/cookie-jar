@@ -9,8 +9,24 @@ import { useRoomStore } from "../stores/roomStore";
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-export function useSocket() {
+interface UseSocketOptions {
+  /**
+   * Called when the server emits `auth:expired` (session invalidated
+   * mid-session). The caller is expected to open whatever sign-in UI
+   * they have — the toast alone auto-dismisses in 6 s and a busy user
+   * will miss it. Optional so the hook remains usable without UI hooks
+   * (e.g. in tests).
+   */
+  onAuthExpired?: () => void;
+}
+
+export function useSocket({ onAuthExpired }: UseSocketOptions = {}) {
   const socketRef = useRef<TypedSocket | null>(null);
+  // Stash in a ref so the `useEffect` below doesn't resubscribe every render —
+  // parents typically pass an inline arrow, which would otherwise churn the
+  // socket listeners and leak state.
+  const onAuthExpiredRef = useRef(onAuthExpired);
+  onAuthExpiredRef.current = onAuthExpired;
   // Shared throttle helper — tested in tests/shared/throttle.test.ts.
   const cursorThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
   const dragThrottleRef = useRef(createThrottle(CURSOR_BROADCAST_INTERVAL_MS));
@@ -105,11 +121,14 @@ export function useSocket() {
       lastJoinRef.current = null;
     });
     socket.on("auth:expired", () => {
-      // Server is about to disconnect us — surface a specific message so the
-      // UI can point the user at sign-in rather than showing a generic
-      // "disconnected" banner.
+      // Server is about to disconnect us. The toast auto-dismisses in 6 s,
+      // so also call the caller's sign-in opener — a user mid-activity
+      // will miss a silent toast but can't miss a modal. Clearing
+      // lastJoinRef prevents the reconnect handler from spinning on a
+      // room the expired session can't rejoin.
       setError("Your session expired. Please sign in again.");
       lastJoinRef.current = null;
+      onAuthExpiredRef.current?.();
     });
     socket.on("rate_limited", (event, retryInMs) => {
       // Event name (e.g. "note:pull") is an internal detail; the user only

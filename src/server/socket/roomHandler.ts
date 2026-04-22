@@ -112,7 +112,14 @@ async function commitJoin(
   // Enforce the jar's access rules before we touch presence or disclose room
   // state. An allowlisted jar can still be joined by its allowlist; an
   // unlisted jar falls back to public/template/owner rules via canAccessJar.
-  if (jar && !canJoinJar(jar, { userId: ctx.userId, email: ctx.email })) {
+  if (
+    jar &&
+    !canJoinJar(jar, {
+      userId: ctx.userId,
+      email: ctx.email,
+      emailVerified: ctx.emailVerified,
+    })
+  ) {
     socket.emit("room:error", "Not authorized to join this jar");
     return null;
   }
@@ -183,6 +190,11 @@ async function applySealedBufferEffects(
  * pulls that carry their own displayName; in shared mode everyone sees the
  * full list. Without this, flipping the toggle mid-session leaves clients
  * stuck with whatever state they had before the flip.
+ *
+ * Shared mode takes the cheap path — one `io.to(roomId).emit` so the socket
+ * adapter fans out once. Private mode needs per-socket filtering and emits
+ * individually. For a 50-member room this avoids 50× serialization work on
+ * every jar:refresh under the shared default.
  */
 async function rebroadcastPulledNotes(
   io: TypedServer,
@@ -192,23 +204,25 @@ async function rebroadcastPulledNotes(
   jar: { name?: string | null; config: JarConfig | null; appearance: JarAppearance | null },
   isPrivate: boolean,
 ): Promise<void> {
-  const [allPulled, shared, members, roomSockets] = await Promise.all([
+  const [allPulled, shared] = await Promise.all([
     noteQueries.listNotesByJar(pool, jarId, "pulled"),
     buildNoteStateShared(jar, jarId, roomId, deps),
+  ]);
+  if (!isPrivate) {
+    io.to(roomId).emit("note:state", { ...shared, pulledNotes: allPulled });
+    return;
+  }
+  // Private: each socket sees only pulls attributed to them. Presence is the
+  // source of truth for display names — SocketContext lives in a handler
+  // closure, not on socket.data, so we can't read it from RemoteSocket.
+  const [members, roomSockets] = await Promise.all([
     deps.presenceStore.getMembers(roomId),
     io.in(roomId).fetchSockets(),
   ]);
-  // presence is the source of truth for display names — SocketContext lives
-  // in a handler closure, not on socket.data, so we can't read it from the
-  // fetched RemoteSocket objects.
   const memberBySocketId = new Map(members.map((m) => [m.id, m]));
   for (const s of roomSockets) {
     const member = memberBySocketId.get(s.id);
-    const pulledNotes = isPrivate
-      ? member
-        ? allPulled.filter((n) => isPullMine(n, member))
-        : []
-      : allPulled;
+    const pulledNotes = member ? allPulled.filter((n) => isPullMine(n, member)) : [];
     s.emit("note:state", { ...shared, pulledNotes });
   }
 }
