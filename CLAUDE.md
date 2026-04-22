@@ -82,7 +82,7 @@ cookie-jar/
 - **Lock = read-mostly**: `room:lock` blocks `note:add` and `note:discard` for everyone (including the owner). `note:pull` and `note:return` stay allowed. Only the owner can lock/unlock.
 - **Jars are images**: A jar references two image URLs (opened/closed) stored on `JarAppearance`. A hand-drawn default SVG is shown when no custom art is set. Procedural Web Audio (additive bell + filtered noise) serves as default sounds; per-jar sound packs (URLs on `JarAppearance.soundPack`) override. The client sanitizes inputs server-side via `sanitizeJarAppearance` (http(s) URLs only) but the system doesn't host uploads itself — asset URLs come from wherever the owner has them published.
 - **Per-socket rate limiting**: Token-bucket in Redis-adjacent memory (not cluster-shared yet) — `note:add` 2/s burst 5, `note:pull` 1/s burst 3, `jar:refresh` 1/3s, etc. Violations emit the `rate_limited` event. Volatile high-frequency events (`cursor:move`, `note:drag`) are throttled client-side + server-marked volatile.
-- **Dev auth**: `better-auth`'s anonymous plugin is registered only when `NODE_ENV !== "production"`. The client's "Continue anonymously" button is gated on `import.meta.env.DEV`. Use it for local flows without OAuth credentials.
+- **Dev auth**: `better-auth`'s anonymous plugin is registered only when `NODE_ENV === "development"` or `NODE_ENV === "test"` — any other value (including unset, `"production"`, `"staging"`, or custom names) fails closed so a misconfigured deploy can't accidentally expose anonymous sign-in. Same rule gates the dev-secret fallback in `resolveAuthSecret()`: `BETTER_AUTH_SECRET` must be set when `NODE_ENV` is anything other than explicit `development`/`test`. The client's "Continue anonymously" button is gated on `import.meta.env.DEV`. Use it for local flows without OAuth credentials.
 
 ## Commands
 
@@ -135,7 +135,7 @@ When a schema change would break code that's still running, split it across two 
 
 ## Auth Setup
 
-Prod uses Google + Discord OAuth; credentials go in `.env` (gitignored). See `.env.example`. For local dev, click **Continue anonymously (dev)** on the landing screen — no credentials needed. That flow creates a real better-auth session using the anonymous plugin, gated behind `NODE_ENV !== "production"` on the server and `import.meta.env.DEV` on the client.
+Prod uses Google + Discord OAuth; credentials go in `.env` (gitignored). See `.env.example`. For local dev, click **Continue anonymously (dev)** on the landing screen — no credentials needed. That flow creates a real better-auth session using the anonymous plugin, which is only registered when `NODE_ENV === "development"` or `NODE_ENV === "test"` (server) AND `import.meta.env.DEV` (client). An unset `NODE_ENV` in a hosted environment *does not* enable the anon plugin — the gating fails closed on ambiguity.
 
 ## Socket Events
 

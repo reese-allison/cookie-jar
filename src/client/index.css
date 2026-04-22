@@ -905,6 +905,13 @@ main:has(.room-view) {
   font-family: "Caveat", cursive;
   font-size: 3rem;
   font-weight: 600;
+  /* Caveat's glyphs extend past their typographic right edge (calligraphic
+     tail), and half-pixel rounding from `translate(-50%, -50%)` on high-DPI
+     mobile screens can clip that overshoot. Symmetric horizontal padding
+     gives the flourish room without shifting the visual center, and
+     line-height: 1 keeps the vertical box snug. */
+  padding: 0 0.15em;
+  line-height: 1;
   color: var(--color-primary);
   pointer-events: none;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
@@ -1789,7 +1796,10 @@ main:has(.room-view) {
 
 .jar-settings-toggle {
   display: flex;
-  align-items: center;
+  /* Align to the top of the label so a multi-line toggle (label + hint)
+     keeps the checkbox anchored at the first line, not centered in the
+     middle of the block. */
+  align-items: flex-start;
   gap: 10px;
   font-size: 0.9375rem;
   color: var(--color-text);
@@ -1800,8 +1810,23 @@ main:has(.room-view) {
 .jar-settings-toggle input[type="checkbox"] {
   width: 16px;
   height: 16px;
+  /* Nudge the box down to the baseline of the first label line. */
+  margin-top: 3px;
   accent-color: var(--color-primary);
   cursor: pointer;
+}
+/* The outer span wraps the main label and an optional hint. Stacking them
+   vertically keeps the hint from running into the label (e.g. "Lock jar"
+   + "Blocks new notes..." was rendering as "Lock jarBlocks..."). */
+.jar-settings-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.jar-settings-toggle__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.35;
 }
 
 /* Segmented Control */
