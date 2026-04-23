@@ -31,6 +31,7 @@ Before starting any non-trivial feature, create a plan file in the `plans/` dire
 - **Package manager**: Bun
 - **Testing**: Vitest for unit + integration; Playwright for e2e (multi-browser-context for multi-user flows)
 - **Linting/Formatting**: Biome (noExcessiveCognitiveComplexity enabled)
+- **Dead-code scan**: knip (configured via `knip.json` — run `bun run knip` before deleting/moving code to catch orphaned exports and dependencies)
 
 ## Project Structure
 
@@ -98,6 +99,7 @@ bun run e2e:ui           # Playwright UI mode
 bun run e2e:headed       # Watch the tests drive the browser
 bun run lint             # Check linting + formatting
 bun run lint:fix         # Auto-fix lint + format issues
+bun run knip             # Find unused files, exports, dependencies
 bun run db:up            # Start PostgreSQL + Redis (Docker)
 bun run db:down          # Stop PostgreSQL + Redis
 bun run db:seed          # Seed template jars

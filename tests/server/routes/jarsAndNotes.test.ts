@@ -265,11 +265,23 @@ describe("POST /api/rooms — access + one-active", () => {
     expect(res.body.code).toBeDefined();
   });
 
-  it("stranger gets 403", async () => {
-    const jar = await createTestJar();
+  it("stranger NOT on an allowlist gets 403", async () => {
+    // Jar with an allowlist that excludes the stranger. canJoinJar returns
+    // false only when an allowlist exists and the viewer isn't on it.
+    const jar = await createTestJar({ allowedEmails: ["rest-friend@example.com"] });
     asStranger();
     const res = await request(app).post("/api/rooms").send({ jarId: jar.id });
     expect(res.status).toBe(403);
+  });
+
+  it("code-holder on a private jar without an allowlist can create a room", async () => {
+    // Mirrors "People who star a jar can open a room without being the owner":
+    // if canJoinJar passes for this viewer (same rule the star endpoint uses),
+    // they may also reopen the jar when no active room exists.
+    const jar = await createTestJar();
+    asStranger();
+    const res = await request(app).post("/api/rooms").send({ jarId: jar.id });
+    expect(res.status).toBe(201);
   });
 
   it("returns the existing active room (200) instead of creating a second", async () => {

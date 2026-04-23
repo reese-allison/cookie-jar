@@ -26,10 +26,10 @@ describe("CopyableRoomCode", () => {
     expect(screen.getByText("ABCDEF")).toBeDefined();
   });
 
-  it("copies the code to the clipboard and shows Copied on click", async () => {
+  it("copies the full room URL to the clipboard and shows Copied on click", async () => {
     render(<CopyableRoomCode code="ABCDEF" />);
-    fireEvent.click(screen.getByRole("button", { name: /copy room code/i }));
-    expect(writeText).toHaveBeenCalledWith("ABCDEF");
+    fireEvent.click(screen.getByRole("button", { name: /copy room link/i }));
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/ABCDEF`);
     await waitFor(() => {
       expect(screen.getByText(/copied/i)).toBeDefined();
     });
@@ -39,7 +39,7 @@ describe("CopyableRoomCode", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       render(<CopyableRoomCode code="ABCDEF" />);
-      fireEvent.click(screen.getByRole("button", { name: /copy room code/i }));
+      fireEvent.click(screen.getByRole("button", { name: /copy room link/i }));
       await waitFor(() => expect(screen.getByText(/copied/i)).toBeDefined());
       act(() => {
         vi.advanceTimersByTime(2000);

@@ -11,13 +11,14 @@ import pool from "../db/pool";
 import * as noteQueries from "../db/queries/notes";
 import * as roomQueries from "../db/queries/rooms";
 import * as starQueries from "../db/queries/starredJars";
+import { closeEmptyRoom } from "./closeEmptyRoom";
 import type { SocketContext } from "./context";
 import type { SocketDeps } from "./deps";
 import type { IdleTimeoutManager } from "./idleTimeout";
 import type { TypedServer } from "./server";
 
 export type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-export type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>;
+type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>;
 
 interface PullAttribution {
   pulledBy?: string | null;
@@ -230,15 +231,11 @@ export function startIdleTimeout(
 ): void {
   if (!idleTimeouts) return;
   idleTimeouts.start(roomId, timeoutMinutes, async (expiredRoomId) => {
-    await roomQueries.updateRoomState(pool, expiredRoomId, "closed");
-    // Reset pulled notes back into the jar so the next room for this jar
-    // starts from a clean state — the previous group disconnected before
-    // returning what they pulled, and leaving them "pulled" in the DB
-    // surfaces as ghost notes on the next room's table.
-    await noteQueries.resetPulledNotesForJar(pool, jarId);
+    const closed = await roomQueries.closeRoomIfOpen(pool, expiredRoomId);
+    if (!closed) return;
     io.to(expiredRoomId).emit("room:error", "Room closed due to inactivity");
     io.in(expiredRoomId).disconnectSockets();
-    await deps.presenceStore.clearRoom(expiredRoomId);
+    await closeEmptyRoom(deps, expiredRoomId, jarId);
   });
 }
 

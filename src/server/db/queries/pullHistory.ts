@@ -1,7 +1,7 @@
 import type pg from "pg";
 import type { Queryable } from "../transaction";
 
-export interface PullHistoryEntry {
+interface PullHistoryEntry {
   id: string;
   jarId: string;
   noteId: string;

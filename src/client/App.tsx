@@ -8,6 +8,7 @@ import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { RoomView } from "./components/RoomView";
 import { SignInModal } from "./components/SignInModal";
 import { useJarActions } from "./hooks/useJarActions";
+import { useRoomUrlSync } from "./hooks/useRoomUrlSync";
 import { useSocket } from "./hooks/useSocket";
 import { useSession } from "./lib/auth-client";
 import { starJar, unstarJar } from "./lib/myJarsApi";
@@ -42,6 +43,17 @@ function App() {
   // toast alone auto-dismisses in 6 s and a busy user would miss it.
   const socketApi = useSocket({ onAuthExpired: openSignIn });
 
+  // URL ↔ room sync. Auto-join only for signed-in users — an anonymous
+  // visitor who hits /ABCDEF should see the landing form with the code
+  // prefilled so they can choose a guest name first.
+  const displayName = user?.displayName ?? "Guest";
+  const initialCode = useRoomUrlSync({
+    joinRoom: socketApi.joinRoom,
+    leaveRoom: socketApi.leaveRoom,
+    displayName,
+    canAutoJoin: Boolean(user),
+  });
+
   return (
     <ErrorBoundary>
       <ErrorToast />
@@ -53,7 +65,12 @@ function App() {
           onRequestSignIn={openSignIn}
         />
       ) : (
-        <LandingScreen user={user} socketApi={socketApi} onRequestSignIn={openSignIn} />
+        <LandingScreen
+          user={user}
+          socketApi={socketApi}
+          onRequestSignIn={openSignIn}
+          initialCode={initialCode}
+        />
       )}
       <SignInModal open={signInOpen} onClose={closeSignIn} />
     </ErrorBoundary>
@@ -64,10 +81,12 @@ function LandingScreen({
   user,
   socketApi,
   onRequestSignIn,
+  initialCode,
 }: {
   user: SessionUser;
   socketApi: SocketApi;
   onRequestSignIn: () => void;
+  initialCode: string | null;
 }) {
   const isJoining = useRoomStore((s) => s.isJoining);
   const error = useRoomStore((s) => s.error);
@@ -102,6 +121,7 @@ function LandingScreen({
         isCreating={isCreating}
         error={error}
         user={user}
+        initialCode={initialCode ?? undefined}
       />
       <InstallPrompt />
     </main>

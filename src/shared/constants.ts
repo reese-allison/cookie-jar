@@ -34,13 +34,3 @@ export const NOTE_STYLES = [
   "parchment",
   "fortune_cookie",
 ] as const;
-
-// Default jar config
-export const DEFAULT_JAR_CONFIG = {
-  noteVisibility: "open",
-  pullVisibility: "shared",
-  sealedRevealCount: 1,
-  showAuthors: false,
-  showPulledBy: false,
-  onLeaveBehavior: "return",
-} as const;

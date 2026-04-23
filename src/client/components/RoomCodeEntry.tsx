@@ -13,6 +13,8 @@ interface RoomCodeEntryProps {
   error: string | null;
   user: { displayName: string; image?: string } | null;
   onCloneTemplate?: (jarId: string) => void;
+  /** Prefilled when the user lands on /CODE but can't auto-join (anon). */
+  initialCode?: string;
 }
 
 export function RoomCodeEntry({
@@ -23,9 +25,10 @@ export function RoomCodeEntry({
   error,
   user,
   onCloneTemplate,
+  initialCode,
 }: RoomCodeEntryProps) {
   const [tab, setTab] = useState<Tab>("join");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode ?? "");
   const [guestName, setGuestName] = useState("");
 
   const displayName = user?.displayName ?? guestName;

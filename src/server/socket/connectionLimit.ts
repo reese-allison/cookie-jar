@@ -1,7 +1,7 @@
 import type { Socket } from "socket.io";
 import { logger } from "../logger";
 
-export interface ConnectionLimiter {
+interface ConnectionLimiter {
   /** Socket.io handshake middleware — rejects the connection when the cap is hit. */
   middleware(socket: Socket, next: (err?: Error) => void): void;
   /** Call on socket disconnect so the counter drops. */

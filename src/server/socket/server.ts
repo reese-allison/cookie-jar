@@ -13,6 +13,7 @@ import { createDedupStore } from "./dedupStore";
 import type { SocketDeps } from "./deps";
 import { IdleTimeoutManager } from "./idleTimeout";
 import { createKickBus } from "./kickBus";
+import { createLastLeaveGrace } from "./lastLeaveGrace";
 import { registerNoteHandlers } from "./noteHandler";
 import { createPresenceStore } from "./presenceStore";
 import { attachRedisHealthLogger } from "./redisHealthLogger";
@@ -26,7 +27,7 @@ export type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
 
-export interface SocketServer {
+interface SocketServer {
   io: TypedServer;
   deps: SocketDeps;
   stop(): Promise<void>;
@@ -84,6 +85,7 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
   const kickBus = createKickBus(pubClient, kickSubClient);
   const cacheBus = createCacheBus(pubClient, cacheSubClient);
   const roomStateCache = createRoomStateCache(pool);
+  const lastLeaveGrace = createLastLeaveGrace();
   const deps: SocketDeps = {
     sealedNotesStore: createSealedNotesStore(stateClient),
     dedupStore: createDedupStore(stateClient),
@@ -91,6 +93,7 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     kickBus,
     cacheBus,
     roomStateCache,
+    lastLeaveGrace,
   };
 
   // Subscribe for cross-pod kick requests: the pod that actually owns the
@@ -170,6 +173,9 @@ export function buildSocketServer(httpServer: HttpServer): SocketServer {
     async stop() {
       if (zombieSweepInitialHandle) clearTimeout(zombieSweepInitialHandle);
       if (zombieSweepIntervalHandle) clearInterval(zombieSweepIntervalHandle);
+      // Drop pending grace-timer closes before pools drain — otherwise a
+      // timer that fires mid-shutdown would hit an already-ended pg.Pool.
+      lastLeaveGrace.stop();
       sessionChecker.stop();
       roomStateCache.stop();
       await kickBus.close();

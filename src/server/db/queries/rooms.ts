@@ -39,7 +39,7 @@ function rowToRoom(row: Record<string, unknown>): RoomRow {
 // Postgres auto-names the `code UNIQUE` constraint this way. Used so callers
 // can distinguish a code collision (retryable here) from the partial
 // one-active-room-per-jar index (retryable at the route level).
-export const ROOM_CODE_UNIQUE_CONSTRAINT = "rooms_code_key";
+const ROOM_CODE_UNIQUE_CONSTRAINT = "rooms_code_key";
 export const ROOM_ACTIVE_PER_JAR_CONSTRAINT = "idx_rooms_active_per_jar";
 
 // 32^6 ≈ 1B codes. At 10k active rooms collision rate is ~5e-5 per create; the
@@ -112,6 +112,25 @@ export async function updateRoomState(
     [state, closedAt, roomId],
   );
   return rows.length > 0 ? rowToRoom(rows[0]) : null;
+}
+
+/**
+ * Transition a room to `closed` only if it is not already closed. Returns true
+ * when this call flipped the row, false if another pod/timer got there first.
+ *
+ * The idempotent check lives in SQL (`WHERE state != 'closed'`) so a re-check
+ * in app code between presence==0 and the UPDATE can't be bulldozed by a
+ * concurrent rejoin that resurrected the room — the second writer's UPDATE
+ * becomes a no-op when the first wins. Used by every close path (last-leave
+ * grace, idle timeout, zombie sweep) to make duplicate fires harmless.
+ */
+export async function closeRoomIfOpen(pool: pg.Pool, roomId: string): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE rooms SET state = 'closed', closed_at = now()
+     WHERE id = $1 AND state != 'closed'`,
+    [roomId],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /** Active (non-closed) rooms for a jar. Used on delete to disconnect live sockets. */

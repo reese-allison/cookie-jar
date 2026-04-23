@@ -38,13 +38,13 @@ describe("presenceStore (Redis)", () => {
     expect(members.map((m) => m.displayName).sort()).toEqual(["Alice", "Bob"]);
   });
 
-  it("memberCount + hasMember", async () => {
+  it("memberCount reflects adds and removes", async () => {
     const store = createPresenceStore(redis);
     expect(await store.memberCount("presence-test-2")).toBe(0);
     await store.addMember("presence-test-2", makeMember("m1"));
     expect(await store.memberCount("presence-test-2")).toBe(1);
-    expect(await store.hasMember("presence-test-2", "m1")).toBe(true);
-    expect(await store.hasMember("presence-test-2", "m2")).toBe(false);
+    await store.removeMember("presence-test-2", "m1");
+    expect(await store.memberCount("presence-test-2")).toBe(0);
   });
 
   it("removeMember is a no-op on missing ids", async () => {

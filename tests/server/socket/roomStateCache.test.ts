@@ -84,6 +84,37 @@ describe("roomStateCache", () => {
     cache.stop();
   });
 
+  it("getFullJar returns the full cached row, sharing cache with getJar", async () => {
+    // Hitting getJar first warms the cache; getFullJar must reuse that entry
+    // instead of triggering a second DB round-trip. Saves 1 query per room:join.
+    const jarRow = {
+      id: "j1",
+      owner_id: "u1",
+      name: "Full Jar",
+      appearance: {},
+      config: { noteVisibility: "open" },
+      is_template: false,
+      is_public: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    const pool = makePool([jarRow]);
+    const cache = createRoomStateCache(pool, { autoSweep: false });
+    await cache.getJar("j1");
+    const full = await cache.getFullJar("j1");
+    expect(pool.query as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    expect(full?.ownerId).toBe("u1");
+    expect(full?.name).toBe("Full Jar");
+    cache.stop();
+  });
+
+  it("getFullJar returns null when the jar doesn't exist", async () => {
+    const pool = makePool([]);
+    const cache = createRoomStateCache(pool, { autoSweep: false });
+    expect(await cache.getFullJar("missing")).toBeNull();
+    cache.stop();
+  });
+
   it("sweep drops expired entries so long-dead jars don't leak", async () => {
     const jarRow = {
       id: "j1",

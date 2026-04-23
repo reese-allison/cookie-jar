@@ -33,7 +33,7 @@ const CONFIGS: Record<string, BucketConfig> = {
   "note:drag_end": { ratePerSec: 10, burst: 10 },
 };
 
-export interface SocketRateLimiter {
+interface SocketRateLimiter {
   /** Returns true if the event may proceed, false if it should be rejected. */
   allow(socketId: string, event: string): boolean;
   /** Clears a socket's buckets when it disconnects. */

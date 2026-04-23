@@ -7,7 +7,7 @@ import type {
 } from "@shared/types";
 import { create } from "zustand";
 
-export interface PeerDrag {
+interface PeerDrag {
   draggerId: string;
   mx: number;
   my: number;

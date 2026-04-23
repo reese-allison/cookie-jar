@@ -7,6 +7,7 @@ import type {
   StarredJarWithAccess,
 } from "../lib/myJarsApi";
 import { deleteJar, fetchMyJars, unstarJar } from "../lib/myJarsApi";
+import { CopyableRoomCode } from "./CopyableRoomCode";
 
 interface MyJarsDrawerProps {
   open: boolean;
@@ -223,17 +224,22 @@ function RoomActions({
 }) {
   if (activeRooms.length === 0) {
     return (
-      <button type="button" className="my-jars-drawer__action" onClick={() => onCreateRoom(jarId)}>
-        New room
-      </button>
+      <div className="my-jars-drawer__action-row">
+        <button
+          type="button"
+          className="my-jars-drawer__action"
+          onClick={() => onCreateRoom(jarId)}
+        >
+          Join
+        </button>
+      </div>
     );
   }
   return (
     <ul className="my-jars-drawer__rooms">
       {activeRooms.map((room) => (
         <li key={room.code} className="my-jars-drawer__room">
-          <code className="my-jars-drawer__code">{room.code}</code>
-          <span className="my-jars-drawer__state">{room.state}</span>
+          <CopyableRoomCode code={room.code} className="my-jars-drawer__code" />
           <button
             type="button"
             className="my-jars-drawer__action"

@@ -164,4 +164,48 @@ describe("room queries", () => {
       await pool.query("DELETE FROM jars WHERE id = ANY($1::uuid[])", [jarIds]);
     }
   });
+
+  describe("closeRoomIfOpen", () => {
+    it("flips an open room to closed and returns true", async () => {
+      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
+      const closed = await roomQueries.closeRoomIfOpen(pool, room.id);
+      expect(closed).toBe(true);
+      const { rows } = await pool.query("SELECT state, closed_at FROM rooms WHERE id = $1", [
+        room.id,
+      ]);
+      expect(rows[0].state).toBe("closed");
+      expect(rows[0].closed_at).not.toBeNull();
+    });
+
+    it("returns false on the second call — the row is already closed", async () => {
+      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
+      await roomQueries.closeRoomIfOpen(pool, room.id);
+      const secondResult = await roomQueries.closeRoomIfOpen(pool, room.id);
+      expect(secondResult).toBe(false);
+    });
+
+    it("returns false for a nonexistent room id", async () => {
+      // Using a valid UUID that does not exist so the WHERE matches nothing.
+      const missing = "00000000-0000-0000-0000-000000000000";
+      expect(await roomQueries.closeRoomIfOpen(pool, missing)).toBe(false);
+    });
+
+    it("does not overwrite the original closed_at on a repeated call", async () => {
+      // The conditional UPDATE must skip already-closed rows entirely —
+      // otherwise a second close would bump closed_at and audit trails would
+      // lie about when the close actually happened.
+      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
+      await roomQueries.closeRoomIfOpen(pool, room.id);
+      const { rows: first } = await pool.query("SELECT closed_at FROM rooms WHERE id = $1", [
+        room.id,
+      ]);
+      const originalClosedAt: Date = first[0].closed_at;
+      await new Promise((r) => setTimeout(r, 10));
+      await roomQueries.closeRoomIfOpen(pool, room.id);
+      const { rows: second } = await pool.query("SELECT closed_at FROM rooms WHERE id = $1", [
+        room.id,
+      ]);
+      expect(second[0].closed_at.getTime()).toBe(originalClosedAt.getTime());
+    });
+  });
 });

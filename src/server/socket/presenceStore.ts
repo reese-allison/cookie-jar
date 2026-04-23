@@ -22,6 +22,12 @@ export interface PresenceStore {
   /** Remove a member. No-op if absent. */
   removeMember(roomId: string, memberId: string): Promise<void>;
   /**
+   * HDEL + HLEN in one round-trip. Used on disconnect where the caller needs
+   * the post-remove count to decide whether to schedule the grace close.
+   * Returns the member count AFTER the remove.
+   */
+  removeAndCount(roomId: string, memberId: string): Promise<number>;
+  /**
    * Remove every entry in the room whose socketId isn't in `liveIds`. Returns
    * the ids that were removed. Used to reap "ghost" presence rows left behind
    * by pod crashes, pre-userId schema migrations, or reconnect storms that
@@ -32,8 +38,6 @@ export interface PresenceStore {
   getMembers(roomId: string): Promise<RoomMember[]>;
   /** Number of members currently in the room. */
   memberCount(roomId: string): Promise<number>;
-  /** Whether a specific member is in the room. */
-  hasMember(roomId: string, memberId: string): Promise<boolean>;
   /** Clear all members for a room (used on final teardown). */
   clearRoom(roomId: string): Promise<void>;
   /** Look up a member by id — used by the idle/color assignment paths. */
@@ -42,10 +46,47 @@ export interface PresenceStore {
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
 const COMMAND_NAME = "cookieJarAddIfUnderCap";
+const ADD_COMMAND = "cookieJarPresenceAdd";
+const REMOVE_AND_COUNT_COMMAND = "cookieJarPresenceRemoveCount";
+const RECONCILE_COMMAND = "cookieJarPresenceReconcile";
 
 function key(roomId: string): string {
   return `room:${roomId}:members`;
 }
+
+// HSET + EXPIRE in one Lua so hosted Redis (Upstash etc.) charges 1 command
+// instead of 2. Also guarantees we can never end up with a TTL-less key from
+// a crash between the two writes.
+const ADD_LUA = `
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return 1
+`;
+
+// HDEL + HLEN in one Lua — fires on every socket disconnect, so worth
+// the 1-command-instead-of-2 savings on the hot path.
+const REMOVE_AND_COUNT_LUA = `
+redis.call('HDEL', KEYS[1], ARGV[1])
+return redis.call('HLEN', KEYS[1])
+`;
+
+// HKEYS + HDEL(...) in one Lua. ARGV holds the ids to KEEP; anything not in
+// that set is dropped. Used in the reconcile-after-full sad path.
+const RECONCILE_LUA = `
+local ids = redis.call('HKEYS', KEYS[1])
+local keep = {}
+for i = 1, #ARGV do keep[ARGV[i]] = true end
+local removed = {}
+for _, id in ipairs(ids) do
+  if not keep[id] then
+    table.insert(removed, id)
+  end
+end
+if #removed > 0 then
+  redis.call('HDEL', KEYS[1], unpack(removed))
+end
+return removed
+`;
 
 /**
  * Atomic capacity-check + insert. Without this, two concurrent joins can both
@@ -61,9 +102,14 @@ function key(roomId: string): string {
  * per (room, userId).
  *
  * ARGV: [role, maxParticipants, maxViewers, memberId, memberJson, ttlSeconds, userId]
- * Returns: { insertedFlag, swept_id1, swept_id2, ... } where insertedFlag is
- * "1" on insert or "0" if the role's cap is already met. The swept ids let
- * the caller emit room:member_left for stale entries we dropped.
+ * Returns a 3-element nested array: [flag, removedIds, memberJsons]
+ *   - flag       : "1" on insert, "0" if the role's cap is already met (other
+ *                  elements are empty in that case)
+ *   - removedIds : ids of stale same-user entries we swept. Caller emits
+ *                  room:member_left for each.
+ *   - memberJsons: the post-insert roster as serialized JSON strings. The
+ *                  Lua already walked HVALS to count, so returning the
+ *                  roster here avoids a separate HGETALL round-trip.
  */
 const ADD_IF_UNDER_CAP_LUA = `
 local members = redis.call('HVALS', KEYS[1])
@@ -71,40 +117,42 @@ local role = ARGV[1]
 local maxP = tonumber(ARGV[2])
 local maxV = tonumber(ARGV[3])
 local newMemberId = ARGV[4]
+local newMemberJson = ARGV[5]
 local ourUserId = ARGV[7]
 local pcount = 0
 local vcount = 0
 local toRemove = {}
+local keep = {}
 for _, raw in ipairs(members) do
   local ok, obj = pcall(cjson.decode, raw)
   if ok and type(obj) == 'table' then
     if ourUserId ~= '' and obj.userId == ourUserId and obj.id ~= newMemberId then
       -- Stale entry for the same user — drop it instead of counting.
       table.insert(toRemove, obj.id)
+    elseif obj.id == newMemberId then
+      -- Same memberId (reconnect): skip the old blob so the new one replaces it.
     else
       if obj.role == 'viewer' then
         vcount = vcount + 1
       else
         pcount = pcount + 1
       end
+      table.insert(keep, raw)
     end
   end
 end
 if role == 'viewer' then
-  if vcount >= maxV then return {'0'} end
+  if vcount >= maxV then return {'0', {}, {}} end
 else
-  if pcount >= maxP then return {'0'} end
+  if pcount >= maxP then return {'0', {}, {}} end
 end
 for _, oid in ipairs(toRemove) do
   redis.call('HDEL', KEYS[1], oid)
 end
-redis.call('HSET', KEYS[1], ARGV[4], ARGV[5])
+redis.call('HSET', KEYS[1], newMemberId, newMemberJson)
 redis.call('EXPIRE', KEYS[1], ARGV[6])
-local result = {'1'}
-for _, oid in ipairs(toRemove) do
-  table.insert(result, oid)
-end
-return result
+table.insert(keep, newMemberJson)
+return {'1', toRemove, keep}
 `;
 
 const registered = new WeakSet<Redis>();
@@ -112,9 +160,13 @@ const registered = new WeakSet<Redis>();
 function ensureRegistered(redis: Redis): void {
   if (registered.has(redis)) return;
   redis.defineCommand(COMMAND_NAME, { numberOfKeys: 1, lua: ADD_IF_UNDER_CAP_LUA });
+  redis.defineCommand(ADD_COMMAND, { numberOfKeys: 1, lua: ADD_LUA });
+  redis.defineCommand(REMOVE_AND_COUNT_COMMAND, { numberOfKeys: 1, lua: REMOVE_AND_COUNT_LUA });
+  redis.defineCommand(RECONCILE_COMMAND, { numberOfKeys: 1, lua: RECONCILE_LUA });
   registered.add(redis);
 }
 
+type AddCommandResult = [flag: string, removed: string[], members: string[]];
 type WithAddCommand = Redis & {
   [COMMAND_NAME](
     key: string,
@@ -125,7 +177,15 @@ type WithAddCommand = Redis & {
     memberJson: string,
     ttlSeconds: string,
     userId: string,
-  ): Promise<string[]>;
+  ): Promise<AddCommandResult>;
+  [ADD_COMMAND](
+    key: string,
+    memberId: string,
+    memberJson: string,
+    ttlSeconds: string,
+  ): Promise<number>;
+  [REMOVE_AND_COUNT_COMMAND](key: string, memberId: string): Promise<number>;
+  [RECONCILE_COMMAND](key: string, ...keepIds: string[]): Promise<string[]>;
 };
 
 /**
@@ -146,13 +206,11 @@ export function createPresenceStore(
 
   return {
     async addMember(roomId, member) {
-      const k = key(roomId);
-      await redis.hset(k, member.id, JSON.stringify(member));
-      await redis.expire(k, ttlSeconds);
+      await client[ADD_COMMAND](key(roomId), member.id, JSON.stringify(member), String(ttlSeconds));
     },
 
     async addMemberIfUnderCap(roomId, member, maxParticipants, maxViewers) {
-      const result = await client[COMMAND_NAME](
+      const [flag, removed, memberJsons] = await client[COMMAND_NAME](
         key(roomId),
         member.role,
         String(maxParticipants),
@@ -162,12 +220,8 @@ export function createPresenceStore(
         String(ttlSeconds),
         member.userId ?? "",
       );
-      const [flag, ...removed] = result;
       if (flag !== "1") return { ok: false, reason: "full" };
-      // Fetch the updated roster so the caller can emit room:state without
-      // a second round-trip.
-      const raw = await redis.hgetall(key(roomId));
-      const members = Object.values(raw).map((s) => JSON.parse(s) as RoomMember);
+      const members = memberJsons.map((s) => JSON.parse(s) as RoomMember);
       return { ok: true, members, removed };
     },
 
@@ -175,15 +229,12 @@ export function createPresenceStore(
       await redis.hdel(key(roomId), memberId);
     },
 
+    async removeAndCount(roomId, memberId) {
+      return client[REMOVE_AND_COUNT_COMMAND](key(roomId), memberId);
+    },
+
     async reconcile(roomId, liveIds) {
-      const k = key(roomId);
-      const raw = await redis.hgetall(k);
-      const toRemove: string[] = [];
-      for (const [id] of Object.entries(raw)) {
-        if (!liveIds.has(id)) toRemove.push(id);
-      }
-      if (toRemove.length > 0) await redis.hdel(k, ...toRemove);
-      return toRemove;
+      return client[RECONCILE_COMMAND](key(roomId), ...liveIds);
     },
 
     async getMembers(roomId) {
@@ -193,10 +244,6 @@ export function createPresenceStore(
 
     async memberCount(roomId) {
       return await redis.hlen(key(roomId));
-    },
-
-    async hasMember(roomId, memberId) {
-      return (await redis.hexists(key(roomId), memberId)) === 1;
     },
 
     async clearRoom(roomId) {

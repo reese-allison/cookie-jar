@@ -20,9 +20,9 @@ function fakePresence(populated: Record<string, number>): PresenceStore {
     addMember: vi.fn(),
     addMemberIfUnderCap: vi.fn(),
     removeMember: vi.fn(),
+    removeAndCount: vi.fn(),
     getMember: vi.fn(),
     getMembers: vi.fn(),
-    hasMember: vi.fn(),
     clearRoom: vi.fn(),
     reconcile: vi.fn(),
   } as unknown as PresenceStore;
@@ -149,9 +149,9 @@ describe("closeZombieRooms", () => {
       addMember: vi.fn(),
       addMemberIfUnderCap: vi.fn(),
       removeMember: vi.fn(),
+      removeAndCount: vi.fn(),
       getMember: vi.fn(),
       getMembers: vi.fn(),
-      hasMember: vi.fn(),
       clearRoom: vi.fn(),
       reconcile: vi.fn(),
     } as unknown as PresenceStore;

@@ -3,13 +3,13 @@ import type pg from "pg";
 import type { Queryable } from "../transaction";
 import { withTransaction } from "../transaction";
 
-export interface ActiveRoomSummary {
+interface ActiveRoomSummary {
   code: string;
   state: RoomState;
   createdAt: string;
 }
 
-export interface OwnedJarWithRooms extends Jar {
+interface OwnedJarWithRooms extends Jar {
   activeRooms: ActiveRoomSummary[];
 }
 

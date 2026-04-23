@@ -1,13 +1,13 @@
 import type { Jar, JarAppearance, JarConfig, RoomState } from "@shared/types";
 import type pg from "pg";
 
-export interface StarredJarActiveRoom {
+interface StarredJarActiveRoom {
   code: string;
   state: RoomState;
   createdAt: string;
 }
 
-export interface StarredJar extends Jar {
+interface StarredJar extends Jar {
   activeRooms: StarredJarActiveRoom[];
 }
 

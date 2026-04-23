@@ -8,6 +8,7 @@ import * as userQueries from "../../../src/server/db/queries/users";
 import { createSocketServer } from "../../../src/server/socket/server";
 import type { Jar, ServerToClientEvents } from "../../../src/shared/types";
 import { makeJarAppearance, makeJarConfig } from "../../helpers/fixtures";
+import { withEnv } from "../../helpers/withEnv";
 
 /**
  * End-to-end socket coverage for config combinations that matter: allowlist
@@ -149,18 +150,44 @@ describe("lock semantics", () => {
 
 describe("close-on-last-leave", () => {
   it("marks the room closed in the DB when the last member disconnects", async () => {
-    const { code, jar } = await makeJarWithRoom();
-    const client = connectAnon();
-    clients.push(client);
-    client.on("connect", () => client.emit("room:join", code, "Lonely"));
-    client.connect();
-    await waitForEvent(client, "room:state");
+    // LAST_LEAVE_GRACE_MS=0 so the close fires synchronously — the 15 s
+    // default grace only exists to survive a refresh in the live app.
+    await withEnv("LAST_LEAVE_GRACE_MS", "0", async () => {
+      const { code, jar } = await makeJarWithRoom();
+      const client = connectAnon();
+      clients.push(client);
+      client.on("connect", () => client.emit("room:join", code, "Lonely"));
+      client.connect();
+      await waitForEvent(client, "room:state");
 
-    // Last-leave: disconnect and wait briefly for the async cleanup.
-    client.disconnect();
-    await new Promise((r) => setTimeout(r, 300));
+      client.disconnect();
+      await new Promise((r) => setTimeout(r, 300));
 
-    const rows = await pool.query("SELECT state FROM rooms WHERE jar_id = $1", [jar.id]);
-    expect(rows.rows[0].state).toBe("closed");
+      const rows = await pool.query("SELECT state FROM rooms WHERE jar_id = $1", [jar.id]);
+      expect(rows.rows[0].state).toBe("closed");
+    });
+  });
+
+  it("keeps the room open when a user rejoins within the grace window", async () => {
+    // Long enough that the rejoin definitely lands before the timer fires.
+    await withEnv("LAST_LEAVE_GRACE_MS", "2000", async () => {
+      const { code, jar } = await makeJarWithRoom();
+      const first = connectAnon();
+      clients.push(first);
+      first.on("connect", () => first.emit("room:join", code, "Flakey"));
+      first.connect();
+      await waitForEvent(first, "room:state");
+      first.disconnect();
+
+      await new Promise((r) => setTimeout(r, 200));
+      const second = connectAnon();
+      clients.push(second);
+      second.on("connect", () => second.emit("room:join", code, "Flakey"));
+      second.connect();
+      await waitForEvent(second, "room:state");
+
+      const rows = await pool.query("SELECT state FROM rooms WHERE jar_id = $1", [jar.id]);
+      expect(rows.rows[0].state).toBe("open");
+    });
   });
 });

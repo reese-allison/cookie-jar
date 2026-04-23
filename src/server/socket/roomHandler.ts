@@ -107,8 +107,13 @@ async function commitJoin(
 } | null> {
   if (!dbRoom) return null;
   const roomId = dbRoom.id;
-  const members = await deps.presenceStore.getMembers(roomId);
-  const jar = await jarQueries.getJarById(pool, dbRoom.jarId);
+  // Run the two reads concurrently — they're independent and the join path
+  // hits them on every connect. Jar read is cached per-pod (5s TTL), so a
+  // busy room typically pays DB cost once per cache window.
+  const [members, jar] = await Promise.all([
+    deps.presenceStore.getMembers(roomId),
+    deps.roomStateCache.getFullJar(dbRoom.jarId),
+  ]);
   // Enforce the jar's access rules before we touch presence or disclose room
   // state. An allowlisted jar can still be joined by its allowlist; an
   // unlisted jar falls back to public/template/owner rules via canAccessJar.
@@ -254,6 +259,9 @@ export function registerRoomHandlers(
         return;
       }
 
+      // Must run before commitJoin so a fired-but-not-yet-run close doesn't
+      // race with our addMemberIfUnderCap + presence re-check.
+      deps.lastLeaveGrace.cancel(dbRoom.id);
       const committed = await commitJoin(io, socket, ctx, deps, dbRoom, displayName);
       if (!committed) return;
       const { member, jar, roomState, pulledMembers } = committed;
@@ -384,27 +392,10 @@ export function registerRoomHandlers(
       );
     }
 
-    await deps.presenceStore.removeMember(roomId, memberId);
-    const remaining = await deps.presenceStore.memberCount(roomId);
+    const remaining = await deps.presenceStore.removeAndCount(roomId, memberId);
     if (remaining === 0) {
-      await deps.presenceStore.clearRoom(roomId);
       idleTimeouts?.stop(roomId);
-      // Close the room in the DB now that it's empty — the idle timer we just
-      // stopped would never fire, so without this the row would sit in state
-      // 'open' forever and pile up in the owner's "My Jars" list. Also reset
-      // any still-pulled notes back to in_jar (matches idle-timeout semantics;
-      // handles edge cases where applyOnLeaveBehavior didn't catch everything).
-      if (jarId) {
-        fireAndForget(
-          noteQueries.resetPulledNotesForJar(pool, jarId),
-          "resetPulledNotesForJar(lastLeave)",
-        );
-      }
-      fireAndForget(
-        roomQueries.updateRoomState(pool, roomId, "closed"),
-        "updateRoomState(lastLeave)",
-      );
-      fireAndForget(deps.sealedNotesStore.clear(roomId), "sealedNotesStore.clear");
+      deps.lastLeaveGrace.schedule({ deps, roomId, jarId });
     }
 
     if (userId) {

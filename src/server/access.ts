@@ -1,6 +1,6 @@
 import type { Jar } from "@shared/types";
 
-export interface AccessViewer {
+interface AccessViewer {
   /** better-auth user id, or null for anonymous. */
   userId: string | null;
   /** Email on the signed-in session, if known. */

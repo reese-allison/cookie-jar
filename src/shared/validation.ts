@@ -43,8 +43,8 @@ export function isValidDisplayName(name: string): boolean {
   return trimmed.length > 0 && trimmed.length <= 30;
 }
 
-export type ParsedNoteInput = { text: string; url?: string; style: NoteStyle };
-export type NoteInputResult = { ok: true; note: ParsedNoteInput } | { ok: false; error: string };
+type ParsedNoteInput = { text: string; url?: string; style: NoteStyle };
+type NoteInputResult = { ok: true; note: ParsedNoteInput } | { ok: false; error: string };
 
 /**
  * Single source of truth for `note:add` input validation. Both the REST POST

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/server/index.ts",
+    "scripts/bootstrap-and-migrate.mjs",
+    "tests/load/bench.ts",
+    "tests/load/cursors.js",
+    "tests/e2e/**/*.ts",
+    "tests/helpers/**/*.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "scripts/**/*.{ts,mjs}"],
+  "ignore": ["src/client/vite-env.d.ts"],
+  "ignoreBinaries": ["k6"],
+  "ignoreDependencies": ["k6"]
+}

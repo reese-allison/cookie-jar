@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 import type { SocketAuthData } from "./authMiddleware";
 import type { TypedServer } from "./server";
 
-export interface SessionExpiryCheckerOptions {
+interface SessionExpiryCheckerOptions {
   io: TypedServer;
   logger: Logger;
   /** Scan interval in ms. Default 5 min. */
@@ -11,7 +11,7 @@ export interface SessionExpiryCheckerOptions {
   clock?: () => number;
 }
 
-export interface SessionExpiryChecker {
+interface SessionExpiryChecker {
   /** Run one immediate scan. Exposed for tests. */
   tick(): void;
   /** Clear the interval. Call from graceful shutdown. */

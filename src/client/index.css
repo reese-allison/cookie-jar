@@ -2208,21 +2208,27 @@ main:has(.room-view) {
 }
 
 .my-jars-drawer__code {
+  position: relative;
   font-family: "JetBrains Mono", monospace;
   font-weight: 700;
   color: #fff;
   background: var(--color-primary);
   letter-spacing: 0.12em;
   padding: 0.15rem 0.5rem;
+  border: none;
   border-radius: var(--radius-pill);
   font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
 }
 
-.my-jars-drawer__state {
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.my-jars-drawer__code:hover {
+  background: var(--color-primary-hover);
+}
+
+.my-jars-drawer__action-row {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .my-jars-drawer__action {

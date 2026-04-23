@@ -43,10 +43,63 @@ const KEY_PREFIX = "room:";
 const KEY_SUFFIX = ":sealed";
 const DEFAULT_TTL_SECONDS = 60 * 60 * 6; // 6 hours
 const COMMAND_NAME = "cookieJarSealedReveal";
+const PUSH_COMMAND = "cookieJarSealedPush";
+const REMOVE_COMMAND = "cookieJarSealedRemove";
+const UPDATE_COMMAND = "cookieJarSealedUpdate";
+const DRAIN_COMMAND = "cookieJarSealedDrain";
 
 function key(roomId: string): string {
   return `${KEY_PREFIX}${roomId}${KEY_SUFFIX}`;
 }
+
+// RPUSH + EXPIRE in one Lua — on hosted Redis (command-billed), this halves
+// the cost of each sealed-mode pull.
+const PUSH_LUA = `
+local len = redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+return len
+`;
+
+// LRANGE + LREM in one Lua: scan the buffer for the note with ARGV[1] as id
+// and remove that exact serialized entry. Returns 1 if removed, 0 if absent.
+const REMOVE_LUA = `
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+local target = ARGV[1]
+for _, raw in ipairs(items) do
+  local ok, obj = pcall(cjson.decode, raw)
+  if ok and type(obj) == 'table' and obj.id == target then
+    redis.call('LREM', KEYS[1], 1, raw)
+    return 1
+  end
+end
+return 0
+`;
+
+// LRANGE + LSET in one Lua: find the entry by note id and replace it in
+// place. Returns 1 on hit, 0 if the note isn't in the buffer.
+const UPDATE_LUA = `
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+local target = ARGV[1]
+local newJson = ARGV[2]
+for i, raw in ipairs(items) do
+  local ok, obj = pcall(cjson.decode, raw)
+  if ok and type(obj) == 'table' and obj.id == target then
+    redis.call('LSET', KEYS[1], i - 1, newJson)
+    return 1
+  end
+end
+return 0
+`;
+
+// LRANGE + DEL in one Lua — used when the owner flips sealed mode off
+// mid-batch. Returns the drained entries before deletion.
+const DRAIN_LUA = `
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+if #items > 0 then
+  redis.call('DEL', KEYS[1])
+end
+return items
+`;
 
 /**
  * Parse a batch of serialized notes from Redis, skipping any malformed
@@ -89,11 +142,19 @@ const registered = new WeakSet<Redis>();
 function ensureRegistered(redis: Redis): void {
   if (registered.has(redis)) return;
   redis.defineCommand(COMMAND_NAME, { numberOfKeys: 1, lua: REVEAL_IF_READY_LUA });
+  redis.defineCommand(PUSH_COMMAND, { numberOfKeys: 1, lua: PUSH_LUA });
+  redis.defineCommand(REMOVE_COMMAND, { numberOfKeys: 1, lua: REMOVE_LUA });
+  redis.defineCommand(UPDATE_COMMAND, { numberOfKeys: 1, lua: UPDATE_LUA });
+  redis.defineCommand(DRAIN_COMMAND, { numberOfKeys: 1, lua: DRAIN_LUA });
   registered.add(redis);
 }
 
 type WithRevealCommand = Redis & {
   [COMMAND_NAME](key: string, threshold: string): Promise<string[]>;
+  [PUSH_COMMAND](key: string, noteJson: string, ttlSeconds: string): Promise<number>;
+  [REMOVE_COMMAND](key: string, noteId: string): Promise<number>;
+  [UPDATE_COMMAND](key: string, noteId: string, noteJson: string): Promise<number>;
+  [DRAIN_COMMAND](key: string): Promise<string[]>;
 };
 
 export function createSealedNotesStore(
@@ -105,21 +166,7 @@ export function createSealedNotesStore(
 
   return {
     async push(roomId, note) {
-      const k = key(roomId);
-      // Pipeline so a crash between rpush and expire can't leave a TTL-less
-      // key sitting in Redis forever. Both commands ship in one round-trip.
-      const results = await redis
-        .multi()
-        .rpush(k, JSON.stringify(note))
-        .expire(k, ttlSeconds)
-        .exec();
-      const rpushResult = results?.[0];
-      if (!rpushResult || rpushResult[0]) {
-        // Either the pipeline didn't return (connection issue) or rpush itself
-        // errored. Fall through with a best-effort length query.
-        return redis.llen(k);
-      }
-      return rpushResult[1] as number;
+      return client[PUSH_COMMAND](key(roomId), JSON.stringify(note), String(ttlSeconds));
     },
 
     async revealIfReady(roomId, threshold) {
@@ -128,54 +175,21 @@ export function createSealedNotesStore(
     },
 
     async drain(roomId) {
-      const k = key(roomId);
-      // LRANGE + DEL is atomic-enough for our purposes: a concurrent push on
-      // another pod would land in a *new* key (we just deleted), so we might
-      // return a buffer of 3 and that concurrent push starts fresh at 1.
-      // Acceptable — the caller is in the jar:refresh path which only runs
-      // from the owner and is rate-limited to 1 per 3s.
-      const raw = await redis.lrange(k, 0, -1);
-      if (raw.length > 0) await redis.del(k);
+      // LRANGE + DEL atomically in one Lua. Concurrent push on another pod
+      // would land in a new key (we just deleted) — acceptable since the
+      // caller is the owner-only jar:refresh path, rate-limited to 1 per 3s.
+      const raw = await client[DRAIN_COMMAND](key(roomId));
       return parseNoteEntries(raw);
     },
 
     async remove(roomId, noteId) {
-      const k = key(roomId);
-      const raw = await redis.lrange(k, 0, -1);
-      if (raw.length === 0) return;
-      // LREM needs the exact serialized value to match. Find the entry whose
-      // parsed id matches and remove that specific JSON string.
-      for (const entry of raw) {
-        try {
-          const parsed = JSON.parse(entry) as Note;
-          if (parsed.id === noteId) {
-            await redis.lrem(k, 1, entry);
-            return;
-          }
-        } catch {
-          // Skip malformed entries — they'll be drained on next reveal.
-        }
-      }
+      await client[REMOVE_COMMAND](key(roomId), noteId);
     },
 
     async updateInBuffer(roomId, note) {
-      const k = key(roomId);
-      const raw = await redis.lrange(k, 0, -1);
-      if (raw.length === 0) return;
-      for (let i = 0; i < raw.length; i++) {
-        try {
-          const parsed = JSON.parse(raw[i]) as Note;
-          if (parsed.id === note.id) {
-            // LSET by index is O(1); no atomic LREM+RPUSH dance needed, which
-            // also preserves the note's queue position — important so the
-            // reveal still fires on the same threshold we were heading for.
-            await redis.lset(k, i, JSON.stringify(note));
-            return;
-          }
-        } catch {
-          // Skip malformed; a future sweep will drop them.
-        }
-      }
+      // LSET by index preserves queue position — important so the reveal
+      // still fires on the same threshold we were heading for.
+      await client[UPDATE_COMMAND](key(roomId), note.id, JSON.stringify(note));
     },
 
     async length(roomId) {

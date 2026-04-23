@@ -2,7 +2,7 @@ import rateLimit, { type RateLimitRequestHandler } from "express-rate-limit";
 import type Redis from "ioredis";
 import { RedisStore, type SendCommandFn } from "rate-limit-redis";
 
-export interface RateLimiterConfig {
+interface RateLimiterConfig {
   /** Window size in milliseconds. */
   windowMs: number;
   /** Max requests per IP in the window. */
@@ -33,7 +33,7 @@ export function buildRateLimiter(cfg: RateLimiterConfig): RateLimitRequestHandle
 }
 
 // Sensible defaults that callers can override via env if needed later.
-export const DEFAULT_LIMITS = {
+const DEFAULT_LIMITS = {
   read: { windowMs: 60_000, limit: 300 },
   write: { windowMs: 60_000, limit: 60 },
 } as const;

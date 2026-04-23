@@ -119,8 +119,8 @@ describe("MyJarsDrawer component", () => {
     render(
       <MyJarsDrawer open onClose={vi.fn()} onJoinRoom={vi.fn()} onCreateRoom={onCreateRoom} />,
     );
-    const newRoomBtn = await screen.findByRole("button", { name: /new room/i });
-    fireEvent.click(newRoomBtn);
+    const joinBtn = await screen.findByRole("button", { name: /^join$/i });
+    fireEvent.click(joinBtn);
     expect(onCreateRoom).toHaveBeenCalledWith("j-empty");
   });
 

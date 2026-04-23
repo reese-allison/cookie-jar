@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface CopyableRoomCodeProps {
   code: string;
+  className?: string;
 }
 
-export function CopyableRoomCode({ code }: CopyableRoomCodeProps) {
+function buildRoomUrl(code: string): string {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `${origin}/${code}`;
+}
+
+export function CopyableRoomCode({ code, className = "room-code" }: CopyableRoomCodeProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -16,7 +22,7 @@ export function CopyableRoomCode({ code }: CopyableRoomCodeProps) {
   );
 
   const handleClick = useCallback(() => {
-    navigator.clipboard?.writeText(code).catch(() => {});
+    navigator.clipboard?.writeText(buildRoomUrl(code)).catch(() => {});
     setCopied(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);
@@ -25,10 +31,10 @@ export function CopyableRoomCode({ code }: CopyableRoomCodeProps) {
   return (
     <button
       type="button"
-      className="room-code"
+      className={className}
       onClick={handleClick}
-      aria-label={`Copy room code ${code}`}
-      title="Click to copy"
+      aria-label={`Copy room link for ${code}`}
+      title="Click to copy room link"
     >
       <span className="room-code__value">{code}</span>
       {copied && (

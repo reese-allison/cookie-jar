@@ -443,4 +443,3 @@ class SoundManager {
 }
 
 export const soundManager = new SoundManager();
-export type { SoundName, SoundPack };

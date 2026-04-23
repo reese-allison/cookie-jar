@@ -26,13 +26,3 @@ export async function createUser(pool: pg.Pool, input: CreateUserInput): Promise
   );
   return rowToUser(rows[0]);
 }
-
-export async function getUserById(pool: pg.Pool, id: string): Promise<User | null> {
-  const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
-  return rows.length > 0 ? rowToUser(rows[0]) : null;
-}
-
-export async function getUserByEmail(pool: pg.Pool, email: string): Promise<User | null> {
-  const { rows } = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-  return rows.length > 0 ? rowToUser(rows[0]) : null;
-}

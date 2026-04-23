@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import type { Logger } from "pino";
 import type { Server as SocketServer } from "socket.io";
 
-export interface ShutdownDeps {
+interface ShutdownDeps {
   httpServer: HttpServer;
   io: SocketServer;
   pools: Pool[];

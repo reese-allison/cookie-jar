@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { canAccessJar } from "../access";
+import { canJoinJar } from "../access";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
 import * as roomQueries from "../db/queries/rooms";
@@ -33,10 +33,13 @@ function validateBounded(
   return { value: v, error: null };
 }
 
-// Create a room for a jar. Open to the owner or anyone on the jar's
-// allowlist. If an active room already exists for the jar, return that one —
-// we cap jars at one active room to keep the "Copy room code" UX unambiguous
-// and avoid a split-brain where two groups play separate sessions.
+// Create a room for a jar. Open to anyone who would be allowed to join a room
+// for this jar (`canJoinJar`): the owner, public/template jars, anyone on the
+// allowlist, and — for private jars without an allowlist — anyone with the
+// jarId (the "starred a jar via the code" case). If an active room already
+// exists for the jar, return that one — we cap jars at one active room to
+// keep the "Copy room link" UX unambiguous and avoid a split-brain where two
+// groups play separate sessions.
 roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { jarId, maxParticipants, maxViewers, idleTimeoutMinutes } = req.body;
@@ -61,7 +64,7 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
     }
     const u = getUser(req);
     const viewer = { userId: u.id, email: u.email, emailVerified: u.emailVerified };
-    if (!canAccessJar(jar, viewer)) {
+    if (!canJoinJar(jar, viewer)) {
       res.status(403).json({ error: "Not authorized to create a room for this jar" });
       return;
     }
