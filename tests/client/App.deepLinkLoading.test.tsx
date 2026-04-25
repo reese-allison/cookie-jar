@@ -121,4 +121,29 @@ describe("App deep-link loading shell", () => {
     render(<App />);
     expect(screen.queryByRole("heading", { name: /cookie jar/i })).not.toBeNull();
   });
+
+  it("shows LandingScreen — not the spinner — after leaving a deep-linked room", async () => {
+    // Deep-link auto-join → enter room → leave. The captured initialCode
+    // ("ABCDEF") is still truthy, but we shouldn't get re-trapped in the
+    // auto-join shell. Regression: leaveRoom used to leave users on a
+    // forever-spinner because isAutoJoining flipped back to true.
+    window.history.replaceState({}, "", "/ABCDEF");
+    render(<App />);
+
+    act(() => {
+      useRoomStore.setState({
+        room: { id: "r1", code: "ABCDEF", jarId: "j1", members: [], isLocked: false },
+      });
+    });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+    act(() => {
+      useRoomStore.getState().reset();
+    });
+
+    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /cookie jar/i })).not.toBeNull();
+    });
+  });
 });

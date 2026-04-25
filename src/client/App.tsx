@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { AuthHeader } from "./components/AuthHeader";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
@@ -66,7 +66,14 @@ function App() {
   // join is firing right now — painting LandingScreen for a few hundred ms
   // before swapping to InRoomScreen produced a measurable layout shift. Show a
   // viewport-sized neutral shell instead so layout is stable from first paint.
-  const isAutoJoining = Boolean(initialCode) && Boolean(user) && !room;
+  // Once we've entered a room at least once, the auto-join phase is over —
+  // gate on this so leaving the room doesn't drop us back onto a forever-
+  // spinner just because `initialCode` is still truthy from mount.
+  const [hasEnteredRoom, setHasEnteredRoom] = useState(false);
+  useEffect(() => {
+    if (room && !hasEnteredRoom) setHasEnteredRoom(true);
+  }, [room, hasEnteredRoom]);
+  const isAutoJoining = Boolean(initialCode) && Boolean(user) && !room && !hasEnteredRoom;
 
   return (
     <ErrorBoundary>
