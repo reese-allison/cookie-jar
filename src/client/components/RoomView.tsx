@@ -6,7 +6,7 @@ import type {
   PullHistoryEntry,
   Room,
 } from "@shared/types";
-import { useCallback, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import type { Rect } from "../hooks/hitTest";
 import type { DropTarget } from "../hooks/useDragNote";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -14,13 +14,19 @@ import { CopyableRoomCode } from "./CopyableRoomCode";
 import { DiscardBin } from "./DiscardBin";
 import { DraggablePulledNote } from "./DraggablePulledNote";
 import { Jar } from "./Jar";
-import { JarSettingsDrawer } from "./JarSettingsDrawer";
 import { NoteForm } from "./NoteForm";
 import { PullHistory } from "./PullHistory";
 import { RemoteCursors } from "./RemoteCursors";
 import { RoomHeaderMenu } from "./RoomHeaderMenu";
 import { SealedNoteStack } from "./SealedNoteStack";
 import { SoundToggle } from "./SoundToggle";
+
+// Drawer is lazy: it's only rendered when the owner opens the settings
+// panel, and pulls in its own form-control surface area + image cropping
+// helpers. Defer the chunk until the user actually opens it.
+const JarSettingsDrawer = lazy(() =>
+  import("./JarSettingsDrawer").then((m) => ({ default: m.JarSettingsDrawer })),
+);
 
 interface RoomViewProps {
   room: Room;
@@ -96,6 +102,11 @@ export function RoomView({
   const discardRect = useRef<Rect | null>(null);
   const [hoverTarget, setHoverTarget] = useState<DropTarget>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Once the user has opened settings, keep the lazy chunk mounted so its
+  // close animation can play (unmounting the lazy boundary on close would
+  // cut the animation off). The chunk only downloads the first time
+  // `settingsOpen` flips true.
+  const [settingsEverOpened, setSettingsEverOpened] = useState(false);
   const isTouch = useMediaQuery("(pointer: coarse)");
   const isNarrow = useMediaQuery("(max-width: 640px)");
 
@@ -142,7 +153,14 @@ export function RoomView({
         Leave
       </button>
       <PullHistory entries={history} onRefresh={onGetHistory} onClear={onClearHistory} />
-      {isOwner && <SettingsButton onClick={() => setSettingsOpen(true)} />}
+      {isOwner && (
+        <SettingsButton
+          onClick={() => {
+            setSettingsEverOpened(true);
+            setSettingsOpen(true);
+          }}
+        />
+      )}
       {!isOwner && onToggleStar && (
         <StarToggleButton starred={isStarred === true} onToggle={onToggleStar} />
       )}
@@ -164,19 +182,21 @@ export function RoomView({
         )}
       </header>
 
-      {isOwner && jarConfig && (
-        <JarSettingsDrawer
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          jarId={room.jarId}
-          name={jarName ?? ""}
-          appearance={jarAppearance ?? {}}
-          config={jarConfig}
-          pulledNoteCount={pulledNotes.length}
-          onSaved={onJarRefresh}
-          onReturnAll={onReturnAll}
-          onDiscardAll={onDiscardAll}
-        />
+      {isOwner && jarConfig && settingsEverOpened && (
+        <Suspense fallback={null}>
+          <JarSettingsDrawer
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            jarId={room.jarId}
+            name={jarName ?? ""}
+            appearance={jarAppearance ?? {}}
+            config={jarConfig}
+            pulledNoteCount={pulledNotes.length}
+            onSaved={onJarRefresh}
+            onReturnAll={onReturnAll}
+            onDiscardAll={onDiscardAll}
+          />
+        </Suspense>
       )}
 
       <div className="room-members">

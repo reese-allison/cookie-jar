@@ -1,19 +1,27 @@
-import { useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { AuthHeader } from "./components/AuthHeader";
-import { ConnectionStatus } from "./components/ConnectionStatus";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
-import { RoomView } from "./components/RoomView";
-import { SignInModal } from "./components/SignInModal";
 import { useJarActions } from "./hooks/useJarActions";
 import { useRoomUrlSync } from "./hooks/useRoomUrlSync";
 import { useSocket } from "./hooks/useSocket";
 import { useSession } from "./lib/auth-client";
-import { starJar, unstarJar } from "./lib/myJarsApi";
-import { useNoteStore } from "./stores/noteStore";
 import { useRoomStore } from "./stores/roomStore";
+
+// Code-split the in-room experience: RoomView pulls in drag/animation libs
+// (~40 KiB of JS Lighthouse flagged as unused on the landing page). The
+// landing visitor only downloads it if/when they actually enter a room.
+const InRoomScreen = lazy(() => import("./InRoomScreen"));
+
+// SignInModal is rendered only when the user clicks "Sign in". Lazy-loading
+// it keeps the OAuth provider button code (~few KiB) out of first paint,
+// and gating the import on `signInOpen` means the chunk isn't even fetched
+// until the modal opens.
+const SignInModal = lazy(() =>
+  import("./components/SignInModal").then((m) => ({ default: m.SignInModal })),
+);
 
 type SessionUser = { displayName: string; image?: string } | null;
 type SocketApi = ReturnType<typeof useSocket>;
@@ -54,16 +62,26 @@ function App() {
     canAutoJoin: Boolean(user),
   });
 
+  // Deep-link CLS guard: when the URL has a code AND we're authed, the auto-
+  // join is firing right now — painting LandingScreen for a few hundred ms
+  // before swapping to InRoomScreen produced a measurable layout shift. Show a
+  // viewport-sized neutral shell instead so layout is stable from first paint.
+  const isAutoJoining = Boolean(initialCode) && Boolean(user) && !room;
+
   return (
     <ErrorBoundary>
       <ErrorToast />
       {room ? (
-        <InRoomScreen
-          user={user}
-          session={session}
-          socketApi={socketApi}
-          onRequestSignIn={openSignIn}
-        />
+        <Suspense fallback={<LoadingShell />}>
+          <InRoomScreen
+            user={user}
+            session={session}
+            socketApi={socketApi}
+            onRequestSignIn={openSignIn}
+          />
+        </Suspense>
+      ) : isAutoJoining ? (
+        <LoadingShell />
       ) : (
         <LandingScreen
           user={user}
@@ -72,8 +90,21 @@ function App() {
           initialCode={initialCode}
         />
       )}
-      <SignInModal open={signInOpen} onClose={closeSignIn} />
+      {signInOpen && (
+        <Suspense fallback={null}>
+          <SignInModal open={signInOpen} onClose={closeSignIn} />
+        </Suspense>
+      )}
     </ErrorBoundary>
+  );
+}
+
+function LoadingShell() {
+  return (
+    <main className="loading-shell" role="status" aria-busy="true" aria-live="polite">
+      <span className="loading-shell__spinner" aria-hidden="true" />
+      <span className="sr-only">Joining room…</span>
+    </main>
   );
 }
 
@@ -124,135 +155,6 @@ function LandingScreen({
         initialCode={initialCode ?? undefined}
       />
       <InstallPrompt />
-    </main>
-  );
-}
-
-function InRoomScreen({
-  user,
-  session,
-  socketApi,
-  onRequestSignIn,
-}: {
-  user: SessionUser;
-  session: ReturnType<typeof useSession>["data"];
-  socketApi: SocketApi;
-  onRequestSignIn: () => void;
-}) {
-  const room = useRoomStore((s) => s.room);
-  const isConnected = useRoomStore((s) => s.isConnected);
-  // NB: `cursors` intentionally NOT subscribed here — RemoteCursors reads
-  // it directly at the leaf so peer packets don't re-render this whole tree.
-  const myId = useRoomStore((s) => s.myId);
-  const setError = useRoomStore((s) => s.setError);
-  const inJarCount = useNoteStore((s) => s.inJarCount);
-  const pulledNotes = useNoteStore((s) => s.pulledNotes);
-  const isAdding = useNoteStore((s) => s.isAdding);
-  const jarConfig = useNoteStore((s) => s.jarConfig);
-  const jarAppearance = useNoteStore((s) => s.jarAppearance);
-  const jarName = useNoteStore((s) => s.jarName);
-  const history = useNoteStore((s) => s.history);
-  const sealedCount = useNoteStore((s) => s.sealedCount);
-  const sealedRevealAt = useNoteStore((s) => s.sealedRevealAt);
-  const isStarred = useNoteStore((s) => s.isStarred);
-  const setStarred = useNoteStore((s) => s.setStarred);
-  const {
-    joinRoom,
-    leaveRoom,
-    moveCursor,
-    addNote,
-    pullNote,
-    discardNote,
-    returnNote,
-    returnAllNotes,
-    discardAllNotes,
-    getHistory,
-    clearHistory,
-    dragNote,
-    dragNoteEnd,
-    refreshJar,
-  } = socketApi;
-  const displayName = user?.displayName ?? "Host";
-
-  const { openRoomForJar } = useJarActions({ displayName, joinRoom, setError });
-
-  const joinExistingRoom = useCallback(
-    (code: string) => joinRoom(code, displayName),
-    [joinRoom, displayName],
-  );
-
-  const handleToggleStar = useCallback(async () => {
-    const jarId = room?.jarId;
-    if (!jarId) return;
-    // Optimistic flip so the star fills immediately. On failure, revert.
-    const nextStarred = !isStarred;
-    setStarred(nextStarred);
-    try {
-      if (nextStarred) await starJar(jarId);
-      else await unstarJar(jarId);
-    } catch {
-      setStarred(!nextStarred);
-    }
-  }, [room?.jarId, isStarred, setStarred]);
-
-  // Memoized: recomputes only when identity-relevant inputs change, not on
-  // every cursor packet. `room?.members.find` is O(n) so worth caching.
-  // `roleKnown` gates owner-only UI so a jar owner doesn't briefly see
-  // contributor affordances (like the star button) before the members array
-  // catches up to myId.
-  const { isViewer, isOwner, roleKnown } = useMemo(() => {
-    const me = myId ? room?.members.find((m) => m.id === myId) : undefined;
-    return {
-      isViewer: me?.role === "viewer" || !session?.user,
-      isOwner: me?.role === "owner",
-      roleKnown: me !== undefined,
-    };
-  }, [myId, room?.members, session?.user]);
-
-  if (!room) return null;
-
-  return (
-    <main>
-      <ConnectionStatus isConnected={isConnected} hasRoom={true} />
-      <AuthHeader
-        user={user}
-        onJoinRoom={joinExistingRoom}
-        onCreateRoom={openRoomForJar}
-        onRequestSignIn={onRequestSignIn}
-        onLeaveRoom={leaveRoom}
-      />
-      <RoomView
-        room={room}
-        inJarCount={inJarCount}
-        pulledNotes={pulledNotes}
-        isAdding={isAdding}
-        isViewer={isViewer}
-        isOwner={isOwner ?? false}
-        showPulledBy={jarConfig?.showPulledBy ?? false}
-        showAuthors={jarConfig?.showAuthors ?? false}
-        jarAppearance={jarAppearance ?? undefined}
-        jarConfig={jarConfig ?? undefined}
-        jarName={jarName ?? undefined}
-        sealedCount={sealedCount}
-        sealedRevealAt={sealedRevealAt}
-        onMouseMove={moveCursor}
-        onLeave={leaveRoom}
-        onJarRefresh={refreshJar}
-        onAddNote={addNote}
-        onPull={pullNote}
-        onDiscard={discardNote}
-        onReturn={returnNote}
-        onReturnAll={isOwner ? returnAllNotes : undefined}
-        onDiscardAll={isOwner ? discardAllNotes : undefined}
-        onDragNote={dragNote}
-        onDragNoteEnd={dragNoteEnd}
-        history={history}
-        onGetHistory={getHistory}
-        onClearHistory={isOwner ? clearHistory : undefined}
-        onSignIn={onRequestSignIn}
-        isStarred={isStarred}
-        onToggleStar={!roleKnown || isOwner ? undefined : handleToggleStar}
-      />
     </main>
   );
 }

@@ -1,0 +1,49 @@
+/* Self-hosted fonts. We point @font-face at the woff2 files shipped inside
+   the @fontsource packages (Vite hashes them and bundles them into dist/
+   on import) so we control `font-display` ourselves.
+
+   - Caveat: the H1 hero / brand font, also the LCP element. `swap` so it
+     paints as soon as it's ready; we additionally inject a <link rel="preload">
+     for the 400 weight at build time (see vite.config.ts) so it usually
+     arrives before first paint and there's no visible swap.
+   - Nunito + JetBrains Mono: body and code text. `optional` — if the font
+     isn't cached within ~100 ms, the browser sticks with the system fallback
+     for this page load and never swaps. Eliminates the residual layout shift
+     we saw in Lighthouse. First-time visitors briefly see the system stack;
+     it caches and renders the real font on every subsequent navigation. */
+
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@fontsource/caveat/files/caveat-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("@fontsource/caveat/files/caveat-latin-600-normal.woff2") format("woff2");
+}
+
+/* Variable Nunito — single woff2 covering 200..1000. The browser interpolates
+   400/600/700 (the only weights we use) from one file, replacing what would
+   otherwise be three separate downloads. */
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: optional;
+  src: url("@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: optional;
+  src: url("@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+}

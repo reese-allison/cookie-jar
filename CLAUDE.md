@@ -14,6 +14,14 @@ A real-time collaborative web app where groups share a virtual jar of user-creat
 
 No feature code should be written without a corresponding test written beforehand. This applies to backend logic, API routes, real-time event handlers, and frontend component behavior.
 
+#### Coverage gate: `bun run test:missing`
+
+Run `bun run test:missing` before pushing. It scans the four client folders that follow strict 1:1 filename mirroring (`components/`, `hooks/`, `lib/`, `stores/`) and exits non-zero if any source file lacks a matching test. It runs in CI as part of the lint job (see `.github/workflows/ci.yml`).
+
+The mirroring rule: `src/client/components/Foo.tsx` is satisfied by `tests/client/components/Foo.test.tsx`, `Foo.test.ts`, or any `Foo.<descriptor>.test.{ts,tsx}` (so `RoomView.starPlacement.test.tsx` covers `RoomView.tsx`).
+
+When you start a new feature under one of those folders, the TDD loop is: create the test file first (`bun run test:missing` should now stay green for that path because the test exists), watch it fail (`bun run test`), then write the source file. Server-side code (`src/server/**`) is not scanned because tests there group across files (e.g. `routes/jarsAndNotes.test.ts` covers multiple route modules) — TDD still applies, but the gate would produce false positives.
+
 ### Planning
 
 Before starting any non-trivial feature, create a plan file in the `plans/` directory. Plans are **not committed to source control** (gitignored). They exist to align on approach before writing code.
@@ -93,7 +101,9 @@ bun run dev              # Start client + server concurrently
 bun run dev:client       # Start Vite dev server only
 bun run dev:server       # Start Express server only (with watch)
 bun run test             # Vitest in watch mode
-bun run test:run         # Vitest once
+bun run test:run         # Vitest once (excludes the Lighthouse suite)
+bun run test:missing     # Fail if any client/{components,hooks,lib,stores} source file lacks a mirrored test (CI gate)
+bun run test:lighthouse  # Sandboxed Lighthouse audit — fails if any category < 0.9 (requires Docker)
 bun run e2e              # Playwright e2e (reuses running dev server locally)
 bun run e2e:ui           # Playwright UI mode
 bun run e2e:headed       # Watch the tests drive the browser

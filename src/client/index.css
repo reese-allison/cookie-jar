@@ -88,6 +88,40 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
+   Loading Shell (deep-link CLS guard)
+   ========================================================================== */
+
+.loading-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background: var(--color-bg);
+}
+
+.loading-shell__spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  animation: loading-shell-spin 800ms linear infinite;
+}
+
+@keyframes loading-shell-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-shell__spinner {
+    animation: none;
+    border-top-color: var(--color-border);
+  }
+}
+
+/* ==========================================================================
    Reduced Motion
    ========================================================================== */
 
@@ -2050,16 +2084,18 @@ main:has(.room-view) {
   color: var(--color-text);
 }
 
+/* Primary uses the darker --color-primary-hover as its base so 12px white
+   text clears WCAG AA (4.5:1). The lighter --color-primary alone fails (3.28). */
 .top-bar__button--primary {
-  background: var(--color-primary);
+  background: var(--color-primary-hover);
   color: var(--color-surface);
-  border-color: var(--color-primary);
+  border-color: var(--color-primary-hover);
 }
 
 .top-bar__button--primary:hover {
-  background: var(--color-primary);
+  background: var(--color-primary-hover);
   color: var(--color-surface);
-  filter: brightness(1.05);
+  filter: brightness(1.1);
 }
 
 /* ==========================================================================

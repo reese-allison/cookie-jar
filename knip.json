@@ -3,6 +3,7 @@
   "entry": [
     "src/server/index.ts",
     "scripts/bootstrap-and-migrate.mjs",
+    "scripts/lighthouse-runner.mjs",
     "tests/load/bench.ts",
     "tests/load/cursors.js",
     "tests/e2e/**/*.ts",
@@ -11,5 +12,10 @@
   "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "scripts/**/*.{ts,mjs}"],
   "ignore": ["src/client/vite-env.d.ts"],
   "ignoreBinaries": ["k6"],
-  "ignoreDependencies": ["k6"]
+  "ignoreDependencies": [
+    "k6",
+    "@fontsource-variable/nunito",
+    "@fontsource/caveat",
+    "@fontsource/jetbrains-mono"
+  ]
 }

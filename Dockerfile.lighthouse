@@ -1,0 +1,38 @@
+# Sandbox image for Lighthouse audits — built and invoked by
+# tests/lighthouse/lighthouse.test.ts. Pins Chromium so perf scoring is
+# reproducible across dev machines and CI runners.
+FROM oven/bun:1.3-debian
+
+# Chromium plus the fonts/CA bundle Lighthouse needs to render most pages
+# faithfully. dumb-init reaps the chrome subprocess cleanly on container exit.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      chromium \
+      ca-certificates \
+      fonts-freefont-ttf \
+      fonts-liberation \
+      fonts-noto-color-emoji \
+      dumb-init \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME_PATH=/usr/bin/chromium \
+    NODE_ENV=production \
+    CI=1
+
+WORKDIR /app
+
+# Install deps with the lockfile so the audit environment matches the app
+# environment exactly (lighthouse + chrome-launcher come along as devDeps).
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+# Build the client. Server source isn't needed — the runner serves dist/
+# statically from a tiny in-process HTTP server.
+COPY tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts index.html ./
+COPY public ./public
+COPY src ./src
+RUN bun run build
+
+COPY scripts/lighthouse-runner.mjs ./scripts/lighthouse-runner.mjs
+
+ENTRYPOINT ["dumb-init", "--", "bun", "run", "scripts/lighthouse-runner.mjs"]

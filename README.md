@@ -1,5 +1,7 @@
 # Cookie Jar
 
+[![CI](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml/badge.svg)](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml)
+
 A real-time collaborative web app where groups share a virtual jar of
 user-created notes and pull them out at random. Jackbox-style room
 codes, live cursors, tactile drag-and-drop.
@@ -44,13 +46,33 @@ anon plugin is enabled only when `NODE_ENV` is `development` or `test`.
 
 | | |
 |---|---|
+| `bun run build` | Production build (typechecks server + client, bundles client) |
 | `bun run test` | Vitest watch mode |
-| `bun run test:run` | Vitest once |
+| `bun run test:run` | Vitest once (excludes the Lighthouse suite) |
+| `bun run test:missing` | Coverage gate — fails if any source file under `components/`, `hooks/`, `lib/`, or `stores/` lacks a mirrored test |
+| `bun run test:lighthouse` | Sandboxed Lighthouse audit — fails if any category drops below the green threshold (requires Docker) |
 | `bun run e2e` | Playwright e2e (auto-uses the running dev server) |
-| `bun run lint` | Biome check |
+| `bun run lint` | Biome check (lint + format) |
 | `bun run lint:fix` | Biome auto-fix |
+| `bun run knip` | Dead-code / unused-dependency scan |
 | `bun run loadtest:cursors` | k6 cursor-traffic scenario (requires k6 installed) |
 | `bun tests/load/bench.ts --rooms 50 --per-room 5` | Bun-based realtime bench (no k6 needed) |
+
+## CI
+
+GitHub Actions runs the full quality suite on every push to `main`
+and every pull request (`.github/workflows/ci.yml`). The workflow
+fans out into four parallel jobs:
+
+| Job | Runs |
+|---|---|
+| **Lint** | `bun run lint`, `bun run knip`, `bun run test:missing`, `bun run db:migrate:check` |
+| **Build** | `bun run build` (server + shared via `tsc -b`, client via `vite build`) |
+| **Vitest** | `bun run test:run` against ephemeral Postgres + Redis service containers |
+| **Lighthouse** | `bun run test:lighthouse` — builds `Dockerfile.lighthouse` and runs the audit inside a pinned-Chromium sandbox; fails if any category scores below 0.9 |
+
+In-progress runs for the same ref are cancelled when new commits land,
+so a PR force-push doesn't leave stale runs queued.
 
 ## Limits
 

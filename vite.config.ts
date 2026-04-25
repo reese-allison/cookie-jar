@@ -1,13 +1,47 @@
 import path from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import { compression } from "vite-plugin-compression2";
 import { VitePWA } from "vite-plugin-pwa";
+
+// Find the hashed Caveat 400 woff2 in the build output and inject a
+// <link rel="preload"> for it into index.html. Caveat is the H1 hero / LCP
+// element — preloading it eliminates the visible font-swap on first paint.
+// Build-only: ctx.bundle is undefined during `vite dev` so the dev page
+// keeps using the network as discovered.
+function preloadCaveatPlugin(): Plugin {
+  return {
+    name: "preload-caveat",
+    transformIndexHtml: {
+      order: "post",
+      handler(html, ctx) {
+        if (!ctx.bundle) return html;
+        const caveatFile = Object.keys(ctx.bundle).find((f) =>
+          /caveat-latin-400-normal[.-][^/]*\.woff2$/.test(f),
+        );
+        if (!caveatFile) return html;
+        const tag = `<link rel="preload" as="font" type="font/woff2" href="/${caveatFile}" crossorigin>`;
+        return html.replace("</head>", `    ${tag}\n  </head>`);
+      },
+    },
+  };
+}
 
 export default defineConfig({
   build: {
     target: "es2020",
     sourcemap: false,
     reportCompressedSize: true,
+    // Terser yields ~3-5% smaller JS than esbuild for ~2x build time.
+    // Worth it on production bundles served to many users.
+    minify: "terser",
+    // Don't <link rel="modulepreload"> chunks that are only reachable via
+    // React.lazy(). vendor-motion (@react-spring + @use-gesture) lives
+    // entirely under InRoomScreen — preloading it from the entry would
+    // download it on every landing visit and defeat the code-split.
+    modulePreload: {
+      resolveDependencies: (_filename, deps) => deps.filter((d) => !d.includes("vendor-motion")),
+    },
     rollupOptions: {
       output: {
         // Split heavy vendors into their own chunks so they cache independently
@@ -30,8 +64,18 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    preloadCaveatPlugin(),
+    // Emit pre-compressed .br and .gz next to every text asset over 1 KiB.
+    // express-static-gzip on the server picks the best one for each request's
+    // Accept-Encoding (br > gzip > identity). Brotli is usually 15-25% smaller
+    // than gzip on JS/CSS, and pre-compressing means zero runtime CPU cost.
+    compression({ algorithms: ["brotliCompress", "gzip"], threshold: 1024 }),
     VitePWA({
       registerType: "autoUpdate",
+      // Defer the SW registration script so it doesn't block first paint.
+      // Default ("auto") emits a synchronous inline script in <head>; with
+      // "script-defer" it runs after HTML parsing instead.
+      injectRegister: "script-defer",
       includeAssets: ["favicon.svg", "robots.txt", "apple-touch-icon.png"],
       // Workbox can't precache uploaded jar images or procedural sounds — those
       // are runtime API responses, not build output — so we cap precache to the

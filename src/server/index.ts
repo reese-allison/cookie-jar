@@ -5,6 +5,7 @@ import { toNodeHandler } from "better-auth/node";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import expressStaticGzip from "express-static-gzip";
 import Redis from "ioredis";
 import { auth, authPool } from "./auth";
 import pool from "./db/pool";
@@ -96,17 +97,25 @@ app.use("/api", (_req: express.Request, res: express.Response) => {
 const distDir = path.resolve(process.cwd(), "dist");
 const distIndex = path.join(distDir, "index.html");
 if (fs.existsSync(distIndex)) {
+  // express-static-gzip looks for a sibling `.br` / `.gz` (emitted at build
+  // time by vite-plugin-compression2) and serves it when the client supports
+  // that encoding — falling back to the uncompressed file otherwise. Brotli
+  // is preferred over gzip when both are accepted.
   app.use(
-    express.static(distDir, {
-      setHeaders(res, filepath) {
-        // index.html must revalidate so fresh deploys ship to users
-        // immediately. Every other Vite asset has a content hash in its
-        // filename and can be cached indefinitely.
-        if (filepath.endsWith("index.html")) {
-          res.setHeader("Cache-Control", "no-cache");
-        } else {
-          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        }
+    expressStaticGzip(distDir, {
+      enableBrotli: true,
+      orderPreference: ["br", "gz"],
+      serveStatic: {
+        setHeaders(res, filepath) {
+          // index.html must revalidate so fresh deploys ship to users
+          // immediately. Every other Vite asset has a content hash in its
+          // filename and can be cached indefinitely.
+          if (filepath.endsWith("index.html")) {
+            res.setHeader("Cache-Control", "no-cache");
+          } else {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
       },
     }),
   );

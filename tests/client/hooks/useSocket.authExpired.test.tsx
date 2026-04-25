@@ -5,7 +5,7 @@
  * auto-dismisses in 6s. A busy user will miss it. The App-level
  * onAuthExpired opener should pop the sign-in modal automatically.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -76,7 +76,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useSocket auth:expired handler", () => {
-  it("opens the sign-in modal so the user can re-auth immediately", () => {
+  it("opens the sign-in modal so the user can re-auth immediately", async () => {
     render(<App />);
 
     // Sign-in modal is closed initially (dialog element is only rendered when open).
@@ -86,7 +86,10 @@ describe("useSocket auth:expired handler", () => {
       fakeSocket.fire("auth:expired");
     });
 
-    // After auth:expired the modal should be open.
-    expect(screen.queryByRole("dialog", { name: /sign in/i })).not.toBeNull();
+    // After auth:expired the modal should open. SignInModal is lazy-loaded,
+    // so the Suspense fallback shows briefly while the chunk resolves.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /sign in/i })).not.toBeNull();
+    });
   });
 });

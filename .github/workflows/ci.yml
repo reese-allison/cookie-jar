@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to a PR cancels any prior in-progress run for the same ref —
+# no point burning CI minutes on stale commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.12
+
+jobs:
+  lint:
+    name: Lint, format, dead-code, coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      # `biome check` covers both lint and format in one pass.
+      - run: bun run lint
+      - run: bun run knip
+      # Coverage gate: every file under components/, hooks/, lib/, stores/
+      # must have a mirrored test (see scripts/find-missing-tests.mjs).
+      - run: bun run test:missing
+      # Migration safety scan — blocks destructive SQL without an explicit
+      # opt-in flag. Cheap to run in this job rather than spinning up a DB.
+      - run: bun run db:migrate:check
+
+  build:
+    name: Build (client + server typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      # `bun run build` runs `tsc -b` (typechecks server + shared) then
+      # `vite build` (typechecks + bundles client). One command covers both.
+      - run: bun run build
+
+  test:
+    name: Vitest (unit + integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cookie_jar
+          POSTGRES_USER: cookie_jar
+          POSTGRES_PASSWORD: cookie_jar_dev
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cookie_jar -d cookie_jar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cookie_jar:cookie_jar_dev@localhost:5432/cookie_jar
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      # `auth.ts` requires this in any non-development/non-test NODE_ENV.
+      # Tests already set NODE_ENV=test, but keeping a value here insulates
+      # us from any helper that re-asserts it during test setup.
+      BETTER_AUTH_SECRET: ci-not-a-real-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      # docker-compose mounts schema.sql via initdb on first boot locally.
+      # The CI postgres service container starts empty, so apply it manually.
+      - name: Bootstrap database schema
+        run: psql "$DATABASE_URL" -f src/server/db/schema.sql
+      # Migrations are idempotent (CREATE ... IF NOT EXISTS) so this is a
+      # no-op on the columns/indexes schema.sql already created — but it
+      # records each migration in pgmigrations, matching local dev.
+      - name: Apply migrations
+        run: bun run db:migrate:up
+      - run: bun run test:run
+
+  lighthouse:
+    name: Lighthouse (sandboxed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      # Builds the Dockerfile.lighthouse image (pinned Chromium + dist),
+      # runs the audit inside the container, fails if any category drops
+      # below the green threshold (0.9 by default).
+      - run: bun run test:lighthouse
