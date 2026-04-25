@@ -19,33 +19,45 @@ jobs:
     name: Lint, format, dead-code, coverage gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       # `biome check` covers both lint and format in one pass.
-      - run: bun run lint
-      - run: bun run knip
+      - name: Lint and format (biome)
+        run: bun run lint
+      - name: Dead-code scan (knip)
+        run: bun run knip
       # Coverage gate: every file under components/, hooks/, lib/, stores/
       # must have a mirrored test (see scripts/find-missing-tests.mjs).
-      - run: bun run test:missing
-      # Migration safety scan — blocks destructive SQL without an explicit
-      # opt-in flag. Cheap to run in this job rather than spinning up a DB.
-      - run: bun run db:migrate:check
+      - name: Test-coverage gate (every component/hook/lib/store has a test)
+        run: bun run test:missing
+      # NB: `db:migrate:check` lives in the deploy pipeline, not here. It
+      # diffs the migrations directory against pgmigrations in the target
+      # database — a feature-branch CI bootstraps a fresh DB so nothing is
+      # ever "pending," making the check a no-op. Run it before deploys
+      # to staging/prod, where the diff is meaningful.
 
   build:
     name: Build (client + server typecheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       # `bun run build` runs `tsc -b` (typechecks server + shared) then
       # `vite build` (typechecks + bundles client). One command covers both.
-      - run: bun run build
+      - name: Typecheck and build
+        run: bun run build
 
   test:
     name: Vitest (unit + integration)
@@ -80,32 +92,40 @@ jobs:
       # us from any helper that re-asserts it during test setup.
       BETTER_AUTH_SECRET: ci-not-a-real-secret
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       # docker-compose mounts schema.sql via initdb on first boot locally.
-      # The CI postgres service container starts empty, so apply it manually.
-      - name: Bootstrap database schema
-        run: psql "$DATABASE_URL" -f src/server/db/schema.sql
-      # Migrations are idempotent (CREATE ... IF NOT EXISTS) so this is a
-      # no-op on the columns/indexes schema.sql already created — but it
-      # records each migration in pgmigrations, matching local dev.
-      - name: Apply migrations
-        run: bun run db:migrate:up
-      - run: bun run test:run
+      # The CI postgres service container starts empty, so we use the same
+      # bootstrap script the production deploy runs: it applies schema.sql,
+      # marks every existing migration as already applied (schema.sql is
+      # the cumulative target state — replaying migrations would collide
+      # on auto-named constraints like `notes_style_check`), then runs
+      # node-pg-migrate up to pick up any genuinely new migrations.
+      - name: Bootstrap database (schema.sql + migrations)
+        run: node scripts/bootstrap-and-migrate.mjs
+      - name: Run Vitest suite
+        run: bun run test:run
 
   lighthouse:
     name: Lighthouse (sandboxed)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       # Builds the Dockerfile.lighthouse image (pinned Chromium + dist),
       # runs the audit inside the container, fails if any category drops
       # below the green threshold (0.9 by default).
-      - run: bun run test:lighthouse
+      - name: Build sandbox + run audit
+        run: bun run test:lighthouse

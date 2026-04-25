@@ -1,6 +1,6 @@
 # Cookie Jar
 
-[![CI](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml/badge.svg)](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml)
+[![CI](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/reese-allison/cookie-jar/actions/workflows/ci.yml?query=branch%3Amain)
 
 A real-time collaborative web app where groups share a virtual jar of
 user-created notes and pull them out at random. Jackbox-style room
@@ -66,7 +66,7 @@ fans out into four parallel jobs:
 
 | Job | Runs |
 |---|---|
-| **Lint** | `bun run lint`, `bun run knip`, `bun run test:missing`, `bun run db:migrate:check` |
+| **Lint** | `bun run lint` (Biome — lint + format), `bun run knip` (dead-code/unused-deps scan), `bun run test:missing` (coverage gate — fails the build if any source file under `components/`, `hooks/`, `lib/`, or `stores/` lacks a mirrored test) |
 | **Build** | `bun run build` (server + shared via `tsc -b`, client via `vite build`) |
 | **Vitest** | `bun run test:run` against ephemeral Postgres + Redis service containers |
 | **Lighthouse** | `bun run test:lighthouse` — builds `Dockerfile.lighthouse` and runs the audit inside a pinned-Chromium sandbox; fails if any category scores below 0.9 |
