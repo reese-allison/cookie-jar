@@ -289,6 +289,15 @@ describe("note queries", () => {
   });
 
   describe("url protocol CHECK", () => {
+    // The protocol guard is enforced by either:
+    //   - schema.sql's inline CHECK on `notes.url` (auto-named `notes_url_check`)
+    //     when a fresh DB is bootstrapped from schema.sql, or
+    //   - migration 1776750000000's named `notes_url_protocol_check` constraint
+    //     when an older DB is upgraded migration-by-migration.
+    // Either name is correct — the test asserts the *behavior* (DB rejects it)
+    // not the specific constraint name.
+    const URL_CHECK_NAME = /notes_url(?:_protocol)?_check/;
+
     it("rejects a javascript: URL at the DB layer", async () => {
       await expect(
         pool.query("INSERT INTO notes (jar_id, text, url, style) VALUES ($1, $2, $3, $4)", [
@@ -297,7 +306,7 @@ describe("note queries", () => {
           "javascript:alert(1)",
           "sticky",
         ]),
-      ).rejects.toThrow(/notes_url_protocol_check/);
+      ).rejects.toThrow(URL_CHECK_NAME);
     });
 
     it("rejects a data: URL at the DB layer", async () => {
@@ -308,7 +317,7 @@ describe("note queries", () => {
           "data:text/html,<script>alert(1)</script>",
           "sticky",
         ]),
-      ).rejects.toThrow(/notes_url_protocol_check/);
+      ).rejects.toThrow(URL_CHECK_NAME);
     });
 
     it("accepts http and https URLs", async () => {
