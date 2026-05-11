@@ -13,6 +13,7 @@ import { logger } from "./logger";
 import { buildDefaultLimiters } from "./middleware/rateLimit";
 import { applySecurityHeaders } from "./middleware/securityHeaders";
 import { buildCompression, buildSoundsStatic } from "./middleware/static";
+import { wwwRedirect } from "./middleware/wwwRedirect";
 import { createHealthRouter } from "./routes/health";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
@@ -25,6 +26,10 @@ const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Canonicalize host first — short-circuits www.* requests before they pass
+// through CORS, body parsing, or auth so OAuth only ever sees the apex.
+app.use(wwwRedirect);
 
 applySecurityHeaders(app);
 app.use(buildCompression());
