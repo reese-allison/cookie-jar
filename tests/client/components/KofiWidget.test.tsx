@@ -26,21 +26,36 @@ function fireScriptLoad(draw: KofiOverlay["draw"]) {
   script.dispatchEvent(new Event("load"));
 }
 
+function makeKofiDom() {
+  const popup = document.createElement("div");
+  popup.className = "floatingchat-container";
+  const buttonWrap = document.createElement("div");
+  buttonWrap.className = "floatingchat-donatebutton-wrap-anim";
+  const overlayRoot = document.createElement("div");
+  overlayRoot.id = "kofi-widget-overlay";
+  document.body.append(popup, buttonWrap, overlayRoot);
+  return { popup, buttonWrap, overlayRoot };
+}
+
 afterEach(() => {
   cleanup();
   for (const s of document.querySelectorAll(`script[src="${SCRIPT_SRC}"]`)) s.remove();
-  for (const c of document.querySelectorAll(".floatingchat-container")) c.remove();
+  for (const c of document.querySelectorAll(
+    '.floatingchat-container, [class^="floatingchat-"], [id^="kofi-widget-"]',
+  )) {
+    c.remove();
+  }
   delete window.kofiWidgetOverlay;
 });
 
 describe("KofiWidget", () => {
   it("renders nothing in the React tree", () => {
-    const { container } = render(<KofiWidget />);
+    const { container } = render(<KofiWidget visible={true} />);
     expect(container.innerHTML).toBe("");
   });
 
   it("appends the Ko-fi overlay script to the document", () => {
-    render(<KofiWidget />);
+    render(<KofiWidget visible={true} />);
     const script = getScript();
     expect(script).not.toBeNull();
     expect(script?.async).toBe(true);
@@ -48,7 +63,7 @@ describe("KofiWidget", () => {
 
   it("draws the floating-chat widget with the configured handle once the script loads", () => {
     const draw = vi.fn();
-    render(<KofiWidget />);
+    render(<KofiWidget visible={true} />);
     fireScriptLoad(draw);
     expect(draw).toHaveBeenCalledTimes(1);
     const [handle, config] = draw.mock.calls[0];
@@ -57,52 +72,57 @@ describe("KofiWidget", () => {
     expect(config["floating-chat.donateButton.text"]).toBe("Support");
   });
 
-  it("does not double-append the script when remounted", () => {
-    const { unmount } = render(<KofiWidget />);
-    unmount();
-    render(<KofiWidget />);
-    const scripts = document.querySelectorAll(`script[src="${SCRIPT_SRC}"]`);
-    expect(scripts.length).toBe(1);
+  it("hides the injected Ko-fi DOM when visible flips to false", () => {
+    // Regression guard for the prior mount/unmount cycle: tearing the
+    // widget down and rebuilding it via remount made `draw()` crash on a
+    // stale internal ref. The new flow keeps the widget mounted at the App
+    // root and toggles visibility, so the DOM stays in place.
+    const { rerender } = render(<KofiWidget visible={true} />);
+    fireScriptLoad(vi.fn());
+    const { popup, buttonWrap, overlayRoot } = makeKofiDom();
+
+    rerender(<KofiWidget visible={false} />);
+    expect(popup.style.display).toBe("none");
+    expect(buttonWrap.style.display).toBe("none");
+    expect(overlayRoot.style.display).toBe("none");
   });
 
-  it("re-draws when remounted after the script is already cached", () => {
+  it("restores visibility when visible flips back to true", () => {
+    const { rerender } = render(<KofiWidget visible={true} />);
+    fireScriptLoad(vi.fn());
+    const { popup, buttonWrap } = makeKofiDom();
+    rerender(<KofiWidget visible={false} />);
+    rerender(<KofiWidget visible={true} />);
+    expect(popup.style.display).toBe("");
+    expect(buttonWrap.style.display).toBe("");
+  });
+
+  it("does not call draw() a second time when visible toggles (the crash path)", () => {
+    // The original bug: `draw()` ran on first mount, the widget injected
+    // DOM, the component unmounted on Landing→Room, we removed the DOM,
+    // then Landing remounted and called `draw()` again. Ko-fi's internal
+    // cache pointed at the now-detached nodes → setting innerHTML on null.
+    // Switching to a visibility toggle means draw() runs exactly once
+    // per session.
     const draw = vi.fn();
-    const { unmount } = render(<KofiWidget />);
+    const { rerender } = render(<KofiWidget visible={true} />);
     fireScriptLoad(draw);
-    unmount();
-    render(<KofiWidget />);
-    expect(draw).toHaveBeenCalledTimes(2);
+    expect(draw).toHaveBeenCalledTimes(1);
+    rerender(<KofiWidget visible={false} />);
+    rerender(<KofiWidget visible={true} />);
+    rerender(<KofiWidget visible={false} />);
+    expect(draw).toHaveBeenCalledTimes(1);
   });
 
-  it("removes every Ko-fi DOM element on unmount (button wrapper + popup container)", () => {
-    // Regression guard: the widget previously only swept .floatingchat-container,
-    // leaving the separate Support-button wrapper behind. The button then
-    // bled through to other screens (e.g. inside a room) on remount.
-    const { unmount } = render(<KofiWidget />);
-    const popup = document.createElement("div");
-    popup.className = "floatingchat-container";
-    const buttonWrap = document.createElement("div");
-    buttonWrap.className = "floatingchat-donatebutton-wrap-anim";
-    const overlayRoot = document.createElement("div");
-    overlayRoot.id = "kofi-widget-overlay";
-    document.body.append(popup, buttonWrap, overlayRoot);
-    unmount();
-    expect(document.querySelector(".floatingchat-container")).toBeNull();
-    expect(document.querySelector(".floatingchat-donatebutton-wrap-anim")).toBeNull();
-    expect(document.getElementById("kofi-widget-overlay")).toBeNull();
-  });
-
-  it("leaves the Ko-fi <script> tag in place on unmount so a remount can reuse it", () => {
-    // The cached script avoids re-fetching from storage.ko-fi.com when the
-    // user bounces between Landing and a room.
-    const { unmount } = render(<KofiWidget />);
+  it("leaves the Ko-fi <script> tag in place on unmount", () => {
+    const { unmount } = render(<KofiWidget visible={true} />);
     expect(getScript()).not.toBeNull();
     unmount();
     expect(getScript()).not.toBeNull();
   });
 
   it("adds a title to Ko-fi iframes for accessibility", () => {
-    render(<KofiWidget />);
+    render(<KofiWidget visible={true} />);
     const iframe = document.createElement("iframe");
     iframe.src = "https://ko-fi.com/widget";
     document.body.appendChild(iframe);

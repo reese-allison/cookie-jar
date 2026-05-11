@@ -127,6 +127,11 @@ function App() {
           <SignInModal open={signInOpen} onClose={closeSignIn} />
         </Suspense>
       )}
+      {/* Mounted once at the App root; toggled via `visible` rather than
+          re-mounted on every Landing↔Room transition. Re-running Ko-fi's
+          `draw()` against torn-down DOM crashes the widget, so we keep its
+          nodes alive for the whole session and hide them in-room. */}
+      <KofiWidget visible={!room} />
     </ErrorBoundary>
   );
 }
@@ -188,7 +193,6 @@ function LandingScreen({
         initialCode={initialCode ?? undefined}
       />
       <InstallPrompt />
-      <KofiWidget />
     </main>
   );
 }
