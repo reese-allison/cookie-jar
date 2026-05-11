@@ -213,7 +213,7 @@ export interface PullHistoryEntry {
 }
 
 export interface ClientToServerEvents {
-  "room:join": (code: string, displayName: string) => void;
+  "room:join": (roomId: string, displayName: string) => void;
   "room:leave": () => void;
   "cursor:move": (position: Omit<CursorPosition, "userId">) => void;
   "note:add": (note: Pick<Note, "text" | "url" | "style">) => void;
