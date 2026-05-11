@@ -4,6 +4,7 @@ import { type Response, Router } from "express";
 import { canAccessJar, canJoinJar } from "../access";
 import pool from "../db/pool";
 import * as jarQueries from "../db/queries/jars";
+import * as roomQueries from "../db/queries/rooms";
 import * as starQueries from "../db/queries/starredJars";
 import { logger } from "../logger";
 import {
@@ -155,11 +156,17 @@ jarRouter.delete("/:id/star", requireAuth, async (req: AuthenticatedRequest, res
 // Get a jar by ID. Access rules: owner, public, template, or on the
 // allowlist. Everything else is 403 — config and appearance carry custom
 // URLs and sealed settings we treat as sensitive.
-// Look up a jar by its permanent share_code. This is the new URL resolution
-// path: `/<shareCode>` in the browser → client calls this → opens-or-joins a
-// room on the resolved jar. Gated on `canJoinJar` (not `canAccessJar`) so
-// the code-holder model still works for private+no-allowlist jars, matching
-// what they'd be allowed to do once they POST /api/rooms.
+// Look up a jar by its permanent share_code. This is the URL-resolution
+// path: `/<shareCode>` in the browser → client calls this → joins the active
+// room (if any) or opens a new one. Gated on `canJoinJar` (not
+// `canAccessJar`) so the code-holder model still works for private+
+// no-allowlist jars, matching what they'd be allowed to do once they POST
+// /api/rooms.
+//
+// Surfaces `activeRoomId` so anon viewers can socket-join an existing room
+// without going through the auth-gated POST /api/rooms path. Without this,
+// any anonymous user clicking a share link for a live session gets a 401
+// they shouldn't see (CLAUDE.md: "Anonymous = view-only").
 jarRouter.get("/by-share-code/:code", attachUser, async (req: AuthenticatedRequest, res) => {
   try {
     const jar = await jarQueries.getJarByShareCode(pool, asString(req.params.code));
@@ -177,7 +184,8 @@ jarRouter.get("/by-share-code/:code", attachUser, async (req: AuthenticatedReque
       res.status(403).json({ error: "Not authorized to access this jar" });
       return;
     }
-    res.json(jar);
+    const activeRooms = await roomQueries.listActiveRoomsForJar(pool, jar.id);
+    res.json({ ...jar, activeRoomId: activeRooms[0]?.id ?? null });
   } catch (err) {
     logger.error({ err }, "GET /api/jars/by-share-code/:code failed");
     res.status(500).json({ error: "Failed to look up jar" });

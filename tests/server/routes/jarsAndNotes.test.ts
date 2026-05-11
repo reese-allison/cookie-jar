@@ -122,6 +122,52 @@ async function createTestJar(overrides: Parameters<typeof makeJarConfig>[0] = {}
   });
 }
 
+describe("GET /api/jars/by-share-code/:code", () => {
+  it("includes activeRoomId=null when the jar has no open room", async () => {
+    const jar = await createTestJar();
+    asOwner();
+    const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(jar.id);
+    expect(res.body.activeRoomId).toBeNull();
+  });
+
+  it("includes the active room's id when one is open", async () => {
+    // Regression guard: anonymous users hitting a share-code link for a
+    // public jar with an open room used to be able to join as viewers. The
+    // share-code rollout funnelled everything through POST /api/rooms which
+    // is auth-gated — anons got 401. Surfacing activeRoomId from this
+    // endpoint lets the client socket-join directly when a room is already
+    // up, bypassing the auth-gated create path.
+    const jar = await createTestJar();
+    asOwner();
+    const roomRes = await request(app).post("/api/rooms").send({ jarId: jar.id });
+    expect(roomRes.status).toBe(201);
+    const roomId = roomRes.body.id;
+
+    asAnon();
+    const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
+    // Anon on a public jar with an open room: should succeed and surface
+    // the room id so the client can socket-join.
+    // (This jar is private+no-allowlist so anon code-holders pass canJoinJar.)
+    expect(res.status).toBe(200);
+    expect(res.body.activeRoomId).toBe(roomId);
+  });
+
+  it("returns 404 for an unknown share_code", async () => {
+    asAnon();
+    const res = await request(app).get("/api/jars/by-share-code/ZZZZZZZ");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 for an anon visitor on a private+allowlist jar", async () => {
+    const jar = await createTestJar({ allowedEmails: ["rest-friend@example.com"] });
+    asAnon();
+    const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("GET /api/jars/:id — allowlist", () => {
   it("returns 200 for the owner", async () => {
     const jar = await createTestJar();

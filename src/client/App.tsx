@@ -71,10 +71,11 @@ function App() {
   const joinFromCode = useMemo(
     () =>
       createJoinFromCode({
+        joinRoom: socketApi.joinRoom,
         openRoomForJar: jarActions.openRoomForJar,
         setError,
       }),
-    [jarActions.openRoomForJar, setError],
+    [socketApi.joinRoom, jarActions.openRoomForJar, setError],
   );
 
   const initialCode = useRoomUrlSync({
