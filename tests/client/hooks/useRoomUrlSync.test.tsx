@@ -131,6 +131,29 @@ describe("useRoomUrlSync", () => {
     expect(window.location.pathname).toBe("/ABCDEF");
   });
 
+  it("prefers room.shareCode over room.code for the URL when both are present", () => {
+    // Post-expand: every joined room carries the jar's permanent shareCode.
+    // The URL must reflect *that* (so the link is permanent across sessions),
+    // not the per-session room.code which churns when the room reopens.
+    resetUrl("/");
+    render(
+      <Harness joinRoom={vi.fn()} leaveRoom={vi.fn()} displayName="Alex" canAutoJoin={true} />,
+    );
+    act(() => {
+      useRoomStore.setState({
+        room: {
+          id: "r1",
+          code: "ROOMABC",
+          shareCode: "JARXYZ7",
+          jarId: "j1",
+          members: [],
+          isLocked: false,
+        },
+      });
+    });
+    expect(window.location.pathname).toBe("/JARXYZ7");
+  });
+
   it("pushes the room code into the URL when room state arrives", () => {
     resetUrl("/");
     render(

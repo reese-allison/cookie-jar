@@ -56,7 +56,10 @@ export function useRoomUrlSync({
   // purpose — on mount `room` is always null, and if we pushed then we'd
   // clobber a `/CODE` URL back to `/` before the auto-join effect below has a
   // chance to read it.
-  const currentCode = room?.code ?? null;
+  // Prefer the jar's permanent shareCode when the server has populated it
+  // (post-expand). Falling back to room.code keeps things working during the
+  // rollout window before every Room payload includes shareCode.
+  const currentCode = room?.shareCode ?? room?.code ?? null;
   const didMountRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -76,10 +79,11 @@ export function useRoomUrlSync({
   useEffect(() => {
     const handler = () => {
       const nextCode = parseCodeFromPath(window.location.pathname);
-      const currentRoomCode = useRoomStore.getState().room?.code ?? null;
-      if (nextCode && nextCode !== currentRoomCode) {
+      const currentRoom = useRoomStore.getState().room;
+      const currentCode = currentRoom?.shareCode ?? currentRoom?.code ?? null;
+      if (nextCode && nextCode !== currentCode) {
         if (canAutoJoin) joinRoom(nextCode, displayName);
-      } else if (!nextCode && currentRoomCode) {
+      } else if (!nextCode && currentCode) {
         leaveRoom();
       }
     };

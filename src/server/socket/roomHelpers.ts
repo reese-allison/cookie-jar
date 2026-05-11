@@ -130,10 +130,11 @@ export function pickColor(existing: RoomMember[]): string {
   );
 }
 
-export function buildRoomState(dbRoom: DbRoom, members: RoomMember[]): Room {
+export function buildRoomState(dbRoom: DbRoom, members: RoomMember[], shareCode?: string): Room {
   return {
     id: dbRoom.id,
     code: dbRoom.code,
+    shareCode,
     jarId: dbRoom.jarId,
     state: dbRoom.state,
     maxParticipants: dbRoom.maxParticipants,

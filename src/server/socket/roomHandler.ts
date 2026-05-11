@@ -265,7 +265,7 @@ export function registerRoomHandlers(
       const committed = await commitJoin(io, socket, ctx, deps, dbRoom, displayName);
       if (!committed) return;
       const { member, jar, roomState, pulledMembers } = committed;
-      socket.emit("room:state", buildRoomState(dbRoom, pulledMembers));
+      socket.emit("room:state", buildRoomState(dbRoom, pulledMembers, jar?.shareCode));
       const jarConfig = jar?.config ?? null;
       const jarAppearance = jar?.appearance ?? null;
       await sendNoteState(

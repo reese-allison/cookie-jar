@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AuthHeader } from "./components/AuthHeader";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
@@ -9,6 +9,7 @@ import { useJarActions } from "./hooks/useJarActions";
 import { useRoomUrlSync } from "./hooks/useRoomUrlSync";
 import { useSocket } from "./hooks/useSocket";
 import { useSession } from "./lib/auth-client";
+import { createJoinFromCode } from "./lib/joinFromCode";
 import { useRoomStore } from "./stores/roomStore";
 
 // Code-split the in-room experience: RoomView pulls in drag/animation libs
@@ -56,8 +57,29 @@ function App() {
   // visitor who hits /ABCDEF should see the landing form with the code
   // prefilled so they can choose a guest name first.
   const displayName = user?.displayName ?? "Guest";
-  const initialCode = useRoomUrlSync({
+  const setError = useRoomStore((s) => s.setError);
+  const jarActions = useJarActions({
+    displayName,
     joinRoom: socketApi.joinRoom,
+    setError,
+  });
+
+  // joinFromCode = "user landed on /CODE". Resolves the code as a jar
+  // share-code first (post-expand: most URLs are now share-codes), opening
+  // or joining the active room on that jar. Falls back to the legacy
+  // joinRoom(code) socket path if the code doesn't match a share-code —
+  // covers bookmarks to old `/<roomCode>` URLs during the rollout window.
+  const joinFromCode = useMemo(
+    () =>
+      createJoinFromCode({
+        openRoomForJar: jarActions.openRoomForJar,
+        joinRoom: socketApi.joinRoom,
+      }),
+    [jarActions.openRoomForJar, socketApi.joinRoom],
+  );
+
+  const initialCode = useRoomUrlSync({
+    joinRoom: joinFromCode,
     leaveRoom: socketApi.leaveRoom,
     displayName,
     canAutoJoin: Boolean(user),
@@ -94,6 +116,7 @@ function App() {
         <LandingScreen
           user={user}
           socketApi={socketApi}
+          jarActions={jarActions}
           onRequestSignIn={openSignIn}
           initialCode={initialCode}
         />
@@ -119,25 +142,21 @@ function LoadingShell() {
 function LandingScreen({
   user,
   socketApi,
+  jarActions,
   onRequestSignIn,
   initialCode,
 }: {
   user: SessionUser;
   socketApi: SocketApi;
+  jarActions: ReturnType<typeof useJarActions>;
   onRequestSignIn: () => void;
   initialCode: string | null;
 }) {
   const isJoining = useRoomStore((s) => s.isJoining);
   const error = useRoomStore((s) => s.error);
-  const setError = useRoomStore((s) => s.setError);
   const { joinRoom } = socketApi;
   const displayName = user?.displayName ?? "Host";
-
-  const { isCreating, openRoomForJar, createJarAndJoin, cloneTemplateAndJoin } = useJarActions({
-    displayName,
-    joinRoom,
-    setError,
-  });
+  const { isCreating, openRoomForJar, createJarAndJoin, cloneTemplateAndJoin } = jarActions;
 
   const joinExistingRoom = useCallback(
     (code: string) => joinRoom(code, displayName),
