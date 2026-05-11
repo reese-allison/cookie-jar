@@ -32,7 +32,11 @@ export function applySecurityHeaders(app: Express): void {
         directives: {
           defaultSrc: ["'none'"],
           baseUri: ["'self'"],
-          scriptSrc: ["'self'"],
+          // Ko-fi floating-chat widget loads its overlay script from
+          // storage.ko-fi.com; without an explicit allowance the landing
+          // page falls back to the strict `'self'`-only policy and the
+          // donation button never renders.
+          scriptSrc: ["'self'", "https://storage.ko-fi.com"],
           // index.html loads a Google Fonts stylesheet from fonts.googleapis.com,
           // so styleSrc must include https:. 'unsafe-inline' covers Vite's
           // dev-time inline styles and any component-level inline style attrs.
@@ -41,7 +45,11 @@ export function applySecurityHeaders(app: Express): void {
           // Font files themselves come from fonts.gstatic.com (https:).
           fontSrc: ["'self'", "data:", "https:"],
           // fetch() to /api, WebSocket (ws:/wss:) to /socket.io, both same-origin.
-          connectSrc: ["'self'", "ws:", "wss:"],
+          // Ko-fi widget pings ko-fi.com for donation flow telemetry.
+          connectSrc: ["'self'", "ws:", "wss:", "https://ko-fi.com"],
+          // Ko-fi renders its checkout/chat surface in an iframe served from
+          // ko-fi.com once the user clicks Support.
+          frameSrc: ["https://ko-fi.com"],
           // User-provided jar sound packs are owner-hosted at arbitrary URLs.
           mediaSrc: ["'self'", "https:"],
           // vite-plugin-pwa generates dist/manifest.webmanifest — without this,

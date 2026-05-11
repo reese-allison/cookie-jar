@@ -3,6 +3,7 @@ import { AuthHeader } from "./components/AuthHeader";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
 import { InstallPrompt } from "./components/InstallPrompt";
+import { KofiWidget } from "./components/KofiWidget";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { useJarActions } from "./hooks/useJarActions";
 import { useRoomUrlSync } from "./hooks/useRoomUrlSync";
@@ -162,6 +163,7 @@ function LandingScreen({
         initialCode={initialCode ?? undefined}
       />
       <InstallPrompt />
+      <KofiWidget />
     </main>
   );
 }
