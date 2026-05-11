@@ -83,7 +83,7 @@ describe("AuthHeader", () => {
     // the server tear the socket down and surface a transient error to the UI.
     useRoomStore.setState({
       room: {
-        code: "ABCDEF",
+        shareCode: "ABCDEF",
         jarId: "j1",
         members: [],
         ownerId: "u1",

@@ -7,7 +7,7 @@ import type { Room, RoomMember } from "../../../src/shared/types";
 
 const TEST_ROOM: Room = {
   id: "room-1",
-  code: "AB2CDE",
+  shareCode: "AB2CDE",
   jarId: "jar-1",
   state: "open",
   maxParticipants: 20,

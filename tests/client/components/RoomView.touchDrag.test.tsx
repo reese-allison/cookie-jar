@@ -31,7 +31,7 @@ function setMatchMedia(coarse: boolean) {
 
 const room: Room = {
   id: "r1",
-  code: "ABC123",
+  shareCode: "ABC123",
   jarId: "j1",
   state: "open",
   maxParticipants: 50,

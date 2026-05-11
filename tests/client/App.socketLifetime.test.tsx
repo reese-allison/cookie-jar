@@ -97,10 +97,9 @@ describe("App socket lifetime", () => {
       useRoomStore.setState({
         room: {
           id: "room-1",
-          code: "ABCDEF",
+          shareCode: "ABCDEF",
           jarId: "jar-1",
           members: [],
-          isLocked: false,
         },
       });
     });

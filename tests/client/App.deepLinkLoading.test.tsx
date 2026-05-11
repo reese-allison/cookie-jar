@@ -98,7 +98,7 @@ describe("App deep-link loading shell", () => {
 
     act(() => {
       useRoomStore.setState({
-        room: { id: "r1", code: "ABCDEF", jarId: "j1", members: [], isLocked: false },
+        room: { id: "r1", shareCode: "ABCDEF", jarId: "j1", members: [] },
       });
     });
 
@@ -132,7 +132,7 @@ describe("App deep-link loading shell", () => {
 
     act(() => {
       useRoomStore.setState({
-        room: { id: "r1", code: "ABCDEF", jarId: "j1", members: [], isLocked: false },
+        room: { id: "r1", shareCode: "ABCDEF", jarId: "j1", members: [] },
       });
     });
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());

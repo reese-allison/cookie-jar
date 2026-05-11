@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 const room: Room = {
   id: "r1",
-  code: "ABC123",
+  shareCode: "ABC123",
   jarId: "j1",
   state: "unlocked",
   maxParticipants: 50,
