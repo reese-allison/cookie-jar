@@ -52,11 +52,11 @@ export function canAccessJar(jar: Jar, viewer: AccessViewer): boolean {
 
 /**
  * Whether `viewer` is allowed to join a room for `jar`. Looser than
- * canAccessJar — reflects the historical "if you have the code, you can
- * join" model, which is what the owner shares on `Copy room code`. The
- * allowlist *tightens* this: once set, joining becomes owner-or-allowlisted
- * only. Without an allowlist a private jar is still joinable by anyone
- * with a valid code.
+ * canAccessJar — reflects the "if you have the share-code, you can join"
+ * model that the owner gets from the Copy-link button. The allowlist
+ * *tightens* this: once set, joining becomes owner-or-allowlisted only.
+ * Without an allowlist a private jar stays joinable by anyone holding a
+ * valid share-code link.
  */
 export function canJoinJar(jar: Jar, viewer: AccessViewer): boolean {
   if (canAccessJar(jar, viewer)) return true;

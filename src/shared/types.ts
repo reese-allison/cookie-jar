@@ -100,8 +100,8 @@ export interface Jar {
   /**
    * Permanent per-jar URL identifier. Stable across the jar's entire lifetime
    * — every room session reuses it, so the share-link `/<shareCode>` never
-   * needs to change. Same alphabet/format as room codes; see
-   * `generateRoomCode()` and the format CHECK on `jars.share_code`.
+   * needs to change. See `generateRoomCode()` for the alphabet/length policy
+   * and the format CHECK on `jars.share_code` for the DB-level invariant.
    */
   shareCode: string;
   isTemplate: boolean;

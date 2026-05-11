@@ -94,7 +94,7 @@ async function seedRooms(pool: pg.Pool, count: number): Promise<string[]> {
     displayName: "Bench Owner",
     email: `bench-owner-${Date.now()}@example.com`,
   });
-  const codes: string[] = [];
+  const roomIds: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const jar = await jarQueries.createJar(pool, {
       ownerId: user.id,
@@ -109,9 +109,9 @@ async function seedRooms(pool: pg.Pool, count: number): Promise<string[]> {
       ]);
     }
     const room = await roomQueries.createRoom(pool, { jarId: jar.id });
-    codes.push(room.code);
+    roomIds.push(room.id);
   }
-  return codes;
+  return roomIds;
 }
 
 async function cleanupBenchData(pool: pg.Pool): Promise<void> {
@@ -152,7 +152,7 @@ async function signInAnonymously(baseUrl: string): Promise<string> {
 
 async function spawnClient(
   baseUrl: string,
-  roomCode: string,
+  roomId: string,
   displayName: string,
   cookie: string,
 ): Promise<ClientCtx> {
@@ -185,7 +185,7 @@ async function spawnClient(
       reject(err);
     });
   });
-  socket.emit("room:join", roomCode, displayName);
+  socket.emit("room:join", roomId, displayName);
   socket.on("disconnect", () => {
     ctx.disconnects += 1;
   });
@@ -283,8 +283,8 @@ async function main() {
   console.log(`baseline RSS=${baseline?.rssMB}MB CPU=${baseline?.cpuPct}%\n`);
 
   console.log("Seeding rooms...");
-  const codes = await seedRooms(pool, args.rooms);
-  console.log(`Seeded ${codes.length} rooms. First few codes: ${codes.slice(0, 3).join(", ")}\n`);
+  const roomIds = await seedRooms(pool, args.rooms);
+  console.log(`Seeded ${roomIds.length} rooms.\n`);
 
   // Connect phase — stagger to avoid handshake thundering herd. Each client
   // hits the anonymous sign-in endpoint first so they're authenticated
@@ -292,12 +292,12 @@ async function main() {
   console.log("Connecting clients (with anon sign-in)...");
   const connectStart = performance.now();
   const ctxs: ClientCtx[] = [];
-  for (let r = 0; r < codes.length; r += 1) {
+  for (let r = 0; r < roomIds.length; r += 1) {
     const roomCtxs = await Promise.all(
       Array.from({ length: args.perRoom }, async (_, u) => {
         try {
           const cookie = await signInAnonymously(args.baseUrl);
-          return await spawnClient(args.baseUrl, codes[r], `u-${r}-${u}`, cookie);
+          return await spawnClient(args.baseUrl, roomIds[r], `u-${r}-${u}`, cookie);
         } catch (err) {
           console.error(`client ${r}-${u} setup failed:`, (err as Error).message);
           return null;

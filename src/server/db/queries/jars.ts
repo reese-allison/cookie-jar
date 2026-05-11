@@ -61,10 +61,10 @@ function rowToJar(row: Record<string, unknown>): Jar {
 }
 
 export async function createJar(db: Queryable, input: CreateJarInput): Promise<Jar> {
-  // share_code is NOT NULL; generate at the app layer (rather than DB-side)
-  // so it goes through the same `generateRoomCode` codepath as room codes —
-  // single alphabet/length policy. Collisions are vanishingly rare at our
-  // scale but retry mirrors `createRoom`'s pattern for parity.
+  // share_code is NOT NULL; generate at the app layer so the alphabet and
+  // length policy lives in shared/constants (ROOM_CODE_CHARS / _LENGTH) and
+  // can be tweaked in one place. Collisions are vanishingly rare at 32^7
+  // ≈ 34B; the retry budget covers the pathological case without spinning.
   for (let attempt = 0; attempt < SHARE_CODE_COLLISION_RETRIES; attempt++) {
     const shareCode = generateRoomCode();
     try {

@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/server/index.ts",
-    "scripts/bootstrap-and-migrate.mjs",
     "scripts/lighthouse-runner.mjs",
     "tests/load/bench.ts",
     "tests/load/cursors.js",

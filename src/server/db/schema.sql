@@ -66,7 +66,8 @@ CREATE TABLE jars (
   config JSONB NOT NULL DEFAULT '{}',
   -- Permanent per-jar URL identifier. Generated at creation and reused for
   -- every room session, so a single share-link works forever regardless of
-  -- room churn. Same alphabet/format as room codes (see ROOM_CODE_CHARS).
+  -- room churn. Alphabet/length policy lives in ROOM_CODE_CHARS /
+  -- ROOM_CODE_LENGTH; pre-bump legacy codes are 6 chars, new ones are 7.
   share_code TEXT NOT NULL UNIQUE CHECK (share_code ~ '^[A-HJ-NP-Z2-9]{6,7}$'),
   is_template BOOLEAN NOT NULL DEFAULT false,
   is_public BOOLEAN NOT NULL DEFAULT false,

@@ -120,8 +120,8 @@ if (fs.existsSync(distIndex)) {
     }),
   );
   // SPA fallback — any non-API, non-static route returns index.html so the
-  // client-side router handles deep links (e.g. room codes pasted into the
-  // address bar). /api, /sounds, and /socket.io are already handled above.
+  // client-side router handles deep links (e.g. jar share-codes pasted into
+  // the address bar). /api, /sounds, and /socket.io are already handled above.
   app.use((req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) {
       return next();
