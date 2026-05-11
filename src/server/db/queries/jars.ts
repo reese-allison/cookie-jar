@@ -4,16 +4,29 @@ import type pg from "pg";
 import type { Queryable } from "../transaction";
 import { withTransaction } from "../transaction";
 
-// Postgres auto-names the UNIQUE constraint added in the share_code migration.
-// Used so createJar can distinguish a share_code collision (retryable) from
-// any other 23505 violation, which should bubble.
-const JAR_SHARE_CODE_UNIQUE_CONSTRAINT = "jars_share_code_unique";
+// The schema.sql inline `share_code TEXT NOT NULL UNIQUE` is auto-named by
+// Postgres as `jars_share_code_key`; the migration adds a separately-named
+// `jars_share_code_unique`. Both names are real possibilities depending on
+// whether a deployment was bootstrapped from schema.sql (fresh CI / Fly)
+// or migrated from an older schema (existing dev / prod). Match BOTH so a
+// 23505 from either is correctly identified as a retryable collision.
+// TODO: A follow-up migration could rename to converge; until then, this
+// list is the source of truth.
+const JAR_SHARE_CODE_UNIQUE_CONSTRAINTS = new Set([
+  "jars_share_code_unique",
+  "jars_share_code_key",
+]);
 const SHARE_CODE_COLLISION_RETRIES = 5;
 
 function constraintOf(err: unknown): string | undefined {
   const e = err as { code?: string; constraint?: string };
   if (e.code !== "23505") return undefined;
   return e.constraint;
+}
+
+function isShareCodeCollision(err: unknown): boolean {
+  const c = constraintOf(err);
+  return c !== undefined && JAR_SHARE_CODE_UNIQUE_CONSTRAINTS.has(c);
 }
 
 interface ActiveRoomSummary {
@@ -84,10 +97,7 @@ export async function createJar(db: Queryable, input: CreateJarInput): Promise<J
       );
       return rowToJar(rows[0]);
     } catch (err) {
-      if (
-        constraintOf(err) === JAR_SHARE_CODE_UNIQUE_CONSTRAINT &&
-        attempt < SHARE_CODE_COLLISION_RETRIES - 1
-      ) {
+      if (isShareCodeCollision(err) && attempt < SHARE_CODE_COLLISION_RETRIES - 1) {
         continue;
       }
       throw err;

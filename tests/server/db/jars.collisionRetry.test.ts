@@ -74,6 +74,43 @@ describe("createJar share_code collision retry", () => {
     expect(generateMock).toHaveBeenCalledTimes(2);
   });
 
+  it("recognizes both UNIQUE-constraint names that real deployments produce", async () => {
+    // The schema-vs-migration name divergence: a CI/Fly fresh deploy gets
+    // `jars_share_code_key` (Postgres auto-names schema.sql's inline UNIQUE);
+    // a migrated dev/prod DB gets `jars_share_code_unique` (named in the
+    // migration). The retry catch must recognize BOTH or the retry path
+    // silently throws on whichever environment didn't match. Reproduce both
+    // by toggling the constraint name on the live table.
+    for (const name of ["jars_share_code_unique", "jars_share_code_key"]) {
+      // Find whichever name currently exists and rename it to the test target.
+      const { rows } = await pool.query(
+        "SELECT conname FROM pg_constraint WHERE conrelid='jars'::regclass AND contype='u'",
+      );
+      const currentName = rows.find(
+        (r) => r.conname === "jars_share_code_unique" || r.conname === "jars_share_code_key",
+      )?.conname;
+      if (!currentName) throw new Error("expected jars to have a UNIQUE constraint on share_code");
+      if (currentName !== name) {
+        await pool.query(`ALTER TABLE jars RENAME CONSTRAINT ${currentName} TO ${name}`);
+      }
+
+      try {
+        generateMock.mockReset();
+        generateMock.mockReturnValueOnce(COLLIDING_CODE);
+        await createJar(pool, { ownerId: testUserId, name: `Occupier-${name}` });
+
+        generateMock.mockReset();
+        generateMock.mockReturnValueOnce(COLLIDING_CODE).mockReturnValueOnce(SURVIVOR_CODE);
+        const retried = await createJar(pool, { ownerId: testUserId, name: `Retried-${name}` });
+        // If the catch didn't recognize this name, the second createJar
+        // would throw on the first collision instead of retrying.
+        expect(retried.shareCode).toBe(SURVIVOR_CODE);
+      } finally {
+        await pool.query("DELETE FROM jars WHERE owner_id = $1", [testUserId]);
+      }
+    }
+  });
+
   it("eventually throws after exhausting the retry budget", async () => {
     // If the generator NEVER produces a unique code (universe of pathological
     // tests), createJar must throw a clear "exhausted retries" error so the
