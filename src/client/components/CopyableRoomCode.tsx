@@ -33,8 +33,8 @@ export function CopyableRoomCode({ code, className = "room-code" }: CopyableRoom
       type="button"
       className={className}
       onClick={handleClick}
-      aria-label={`Copy room link for ${code}`}
-      title="Click to copy room link"
+      aria-label={`Copy share link for ${code}`}
+      title="Click to copy share link"
     >
       <span className="room-code__value">{code}</span>
       {copied && (

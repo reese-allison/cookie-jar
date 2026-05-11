@@ -7,6 +7,7 @@ import type {
   StarredJarWithAccess,
 } from "../lib/myJarsApi";
 import { deleteJar, fetchMyJars, unstarJar } from "../lib/myJarsApi";
+import { CopyableRoomCode } from "./CopyableRoomCode";
 
 interface MyJarsDrawerProps {
   open: boolean;
@@ -159,6 +160,7 @@ function OwnedJarRow({
           Delete
         </button>
       </div>
+      <CopyableRoomCode code={jar.shareCode} className="my-jars-drawer__code" />
       <RoomActions
         jarId={jar.id}
         activeRooms={jar.activeRooms}
@@ -195,12 +197,15 @@ function StarredJarRow({
         </button>
       </div>
       {jar.hasAccess ? (
-        <RoomActions
-          jarId={jar.id}
-          activeRooms={jar.activeRooms}
-          onJoinRoom={onJoinRoom}
-          onCreateRoom={onCreateRoom}
-        />
+        <>
+          <CopyableRoomCode code={jar.shareCode} className="my-jars-drawer__code" />
+          <RoomActions
+            jarId={jar.id}
+            activeRooms={jar.activeRooms}
+            onJoinRoom={onJoinRoom}
+            onCreateRoom={onCreateRoom}
+          />
+        </>
       ) : (
         <p className="my-jars-drawer__no-access">
           The owner has removed your access. Unstar to remove it from this list.

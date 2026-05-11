@@ -97,6 +97,27 @@ describe("KofiWidget", () => {
     expect(buttonWrap.style.display).toBe("");
   });
 
+  it("hides DOM injected AFTER visible flipped to false (race fix)", async () => {
+    // Race: user lands on /CODE, App renders with visible=true, room state
+    // arrives, visible flips to false. If Ko-fi's script is still loading at
+    // that point, the DOM it eventually injects defaults to display:""
+    // — without the re-enforcement in the MutationObserver callback, the
+    // Support button shows up inside the room.
+    const { rerender } = render(<KofiWidget visible={true} />);
+    rerender(<KofiWidget visible={false} />);
+    fireScriptLoad(vi.fn());
+
+    // Inject DOM the way Ko-fi's script would — the MutationObserver
+    // attached in useEffect should see it and re-enforce visibility.
+    const { popup, buttonWrap } = makeKofiDom();
+
+    // MutationObserver callbacks fire on a microtask; flush.
+    await Promise.resolve();
+
+    expect(popup.style.display).toBe("none");
+    expect(buttonWrap.style.display).toBe("none");
+  });
+
   it("does not call draw() a second time when visible toggles (the crash path)", () => {
     // The original bug: `draw()` ran on first mount, the widget injected
     // DOM, the component unmounted on Landing→Room, we removed the DOM,

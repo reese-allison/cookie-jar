@@ -18,12 +18,14 @@ interface UseRoomUrlSyncOptions {
  * Keeps `window.location.pathname` in sync with `roomStore.room`:
  *   - On mount, if the URL looks like `/CODE`, return it as `initialCode` and
  *     auto-join when `canAutoJoin` is true.
- *   - When the room's `code` changes in the store (join/leave), pushState
- *     the matching URL. This gives users a stable, refresh-safe URL and
- *     mitigates the mobile-browser "tab sleep kicks you home" problem — the
- *     tab now has a real address to wake up on.
+ *   - When the room's `shareCode` changes in the store (join/leave),
+ *     pushState the matching URL. This gives users a stable, refresh-safe
+ *     URL and mitigates the mobile-browser "tab sleep kicks you home"
+ *     problem — the tab now has a real address to wake up on.
  *   - On popstate (back/forward), diff URL vs store and call joinRoom or
  *     leaveRoom to match.
+ *   - When a deep-link auto-join fails (`error` is set with no room),
+ *     replaceState `/` so a refresh doesn't loop into the same failure.
  */
 export function useRoomUrlSync({
   joinRoom,
@@ -32,6 +34,7 @@ export function useRoomUrlSync({
   canAutoJoin,
 }: UseRoomUrlSyncOptions): string | null {
   const room = useRoomStore((s) => s.room);
+  const error = useRoomStore((s) => s.error);
 
   // Snapshot the URL once at mount so re-renders from a URL pushState don't
   // keep reporting a "new" initialCode to the caller.
@@ -69,6 +72,20 @@ export function useRoomUrlSync({
       window.history.pushState({}, "", expected);
     }
   }, [currentCode]);
+
+  // Deep-link failure recovery: when an auto-join fails (server emits
+  // `room:error`, store sets `error`, `room` stays null), the URL bar would
+  // otherwise sit on `/CODE` forever — a refresh would loop into the same
+  // failure. Replace it with `/` so the user can recover from the landing.
+  // replaceState (not pushState) so the back button doesn't shuffle through
+  // a dead URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!error || room) return;
+    if (parseCodeFromPath(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [error, room]);
 
   // popstate → join/leave. Read the store via `.getState()` so we don't need
   // to re-bind the listener every time `room` changes — one attach/detach per

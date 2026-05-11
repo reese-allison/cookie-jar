@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const SCRIPT_ID = "kofi-widget-script";
 const SCRIPT_SRC = "https://storage.ko-fi.com/cdn/scripts/overlay-widget.js";
@@ -12,12 +12,12 @@ const KOFI_BUTTON_CONFIG: Record<string, string> = {
 };
 
 // Selectors Ko-fi's overlay-widget injects into the body: the chat-popup
-// wrapper, the floating Support-button wrapper, and the script-managed
-// overlay root. Used together with `visible` to show/hide the whole widget
-// without tearing it down — Ko-fi keeps internal refs to these nodes, so
-// removing them mid-session breaks the next `draw()` call.
-const KOFI_DOM_SELECTORS =
-  '.floatingchat-container, [class^="floatingchat-"], [class^="kofi-"], [id^="kofi-widget-"]';
+// wrapper (`[class^="floatingchat-"]` covers it), the floating Support-
+// button wrapper, and the script-managed overlay root. Used together with
+// `visible` to show/hide the whole widget without tearing it down — Ko-fi
+// keeps internal refs to these nodes, so removing them mid-session breaks
+// the next `draw()` call.
+const KOFI_DOM_SELECTORS = '[class^="floatingchat-"], [class^="kofi-"], [id^="kofi-widget-"]';
 
 type KofiOverlay = { draw: (handle: string, config: Record<string, string>) => void };
 
@@ -55,8 +55,25 @@ interface KofiWidgetProps {
 }
 
 export function KofiWidget({ visible }: KofiWidgetProps) {
+  // The MutationObserver below is set up once; it needs the CURRENT visible
+  // value when Ko-fi injects DOM (the script may finish loading after the
+  // user has already entered a room, so `visible` would be false by then).
+  // A ref lets the observer read the latest prop without re-binding.
+  const visibleRef = useRef(visible);
+
   useEffect(() => {
-    const observer = new MutationObserver(addTitlesToIframes);
+    visibleRef.current = visible;
+    setKofiVisible(visible);
+  }, [visible]);
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      addTitlesToIframes();
+      // Newly-injected Ko-fi DOM defaults to display:""; re-enforce the
+      // current visibility so a script that loads after Landing→Room
+      // transition doesn't surface the Support button inside the room.
+      setKofiVisible(visibleRef.current);
+    });
     observer.observe(document.body, { childList: true, subtree: true });
 
     const drawIfReady = () => {
@@ -64,6 +81,7 @@ export function KofiWidget({ visible }: KofiWidgetProps) {
         window.kofiWidgetOverlay.draw(KOFI_HANDLE, KOFI_BUTTON_CONFIG);
       }
       addTitlesToIframes();
+      setKofiVisible(visibleRef.current);
     };
 
     const existing = document.getElementById(SCRIPT_ID);
@@ -82,14 +100,6 @@ export function KofiWidget({ visible }: KofiWidgetProps) {
       observer.disconnect();
     };
   }, []);
-
-  // Show/hide as a side effect of the `visible` prop. Runs after each
-  // render so a freshly-loaded widget (DOM not yet in the page) catches up
-  // on the next mutation tick — the MutationObserver above re-titles
-  // iframes too, but visibility is a static-DOM concern handled here.
-  useEffect(() => {
-    setKofiVisible(visible);
-  });
 
   return null;
 }

@@ -86,6 +86,31 @@ describe("MyJarsDrawer component", () => {
     });
   });
 
+  it("exposes a copyable share-link per jar so hosts can share without entering the room", async () => {
+    // Workflow regression guard: after the share-code rollout, the drawer
+    // briefly stopped surfacing any per-jar code. Hosts had to Join just to
+    // copy a link. The share-link is the jar's permanent shareCode, which
+    // lives on every jar row regardless of whether a room is open.
+    fetchMock.mockResolvedValueOnce(
+      mineResponse([
+        {
+          ...BASE_JAR,
+          id: "j1",
+          shareCode: "JAR1XYZ",
+          name: "Game Night",
+          activeRooms: [],
+        },
+      ]),
+    );
+    render(<MyJarsDrawer open onClose={vi.fn()} onJoinRoom={vi.fn()} onCreateRoom={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("JAR1XYZ")).toBeDefined();
+      // The CopyableRoomCode button uses aria-label "Copy share link for X"
+      // after this session's NIT pass; pre-NIT it was "Copy room link for X".
+      expect(screen.getByRole("button", { name: /JAR1XYZ/i })).toBeDefined();
+    });
+  });
+
   it("calls onJoinRoom with the room id when Join is clicked", async () => {
     fetchMock.mockResolvedValueOnce(
       mineResponse([

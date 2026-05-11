@@ -143,7 +143,6 @@ describe("useRoomUrlSync", () => {
           shareCode: "ZYXWVU",
           jarId: "j1",
           members: [],
-          isLocked: false,
         },
       });
     });
@@ -158,7 +157,6 @@ describe("useRoomUrlSync", () => {
         shareCode: "ZYXWVU",
         jarId: "j1",
         members: [],
-        isLocked: false,
       },
     });
     render(
@@ -178,7 +176,6 @@ describe("useRoomUrlSync", () => {
         shareCode: "ZYXWVU",
         jarId: "j1",
         members: [],
-        isLocked: false,
       },
     });
     const leaveRoom = vi.fn();
@@ -203,5 +200,42 @@ describe("useRoomUrlSync", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(joinRoom).toHaveBeenCalledWith("ABCDEF", "Alex");
+  });
+
+  it("replaces a stale /CODE with / when a deep-link auto-join fails", async () => {
+    // Regression guard: previously, a failed share-code resolution (server
+    // emits room:error, store sets `error`, `room` stays null) left the
+    // URL bar at /CODE. Refresh would loop into the same failure. The
+    // recovery effect replaceStates `/` so the user can recover.
+    resetUrl("/ABCDEF");
+    render(
+      <Harness joinRoom={vi.fn()} leaveRoom={vi.fn()} displayName="Alex" canAutoJoin={true} />,
+    );
+    expect(window.location.pathname).toBe("/ABCDEF");
+    act(() => {
+      useRoomStore.setState({ error: "Room not found" });
+    });
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("does not touch the URL on a mid-session error while still in a room", async () => {
+    // Errors that fire WHILE a room is active (rate_limited, etc.) shouldn't
+    // kick the user out of the URL — they're still in the room.
+    resetUrl("/ZYXWVU");
+    useRoomStore.setState({
+      room: {
+        id: "r1",
+        shareCode: "ZYXWVU",
+        jarId: "j1",
+        members: [],
+      },
+    });
+    render(
+      <Harness joinRoom={vi.fn()} leaveRoom={vi.fn()} displayName="Alex" canAutoJoin={true} />,
+    );
+    act(() => {
+      useRoomStore.setState({ error: "Rate limited" });
+    });
+    expect(window.location.pathname).toBe("/ZYXWVU");
   });
 });

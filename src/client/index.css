@@ -1548,9 +1548,10 @@ main:has(.room-view) {
     gap: 0.5rem;
     border-radius: var(--radius-md);
     padding: 0.75rem;
-    /* Ko-fi's floating Support button sits at bottom-right on mobile and
-       collides with the install banner's bottom-center position. Push the
-       banner up above Ko-fi's button so neither obscures the other. */
+    /* Ko-fi's floating Support button sits in a bottom corner and collides
+       with the install banner's bottom-center position on narrow screens.
+       Push the banner up above Ko-fi's button so neither obscures the
+       other. Verified visually at 375x667 (chrome devtools). */
     bottom: 5.5rem;
   }
 }
