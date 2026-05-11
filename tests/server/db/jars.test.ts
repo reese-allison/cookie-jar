@@ -126,4 +126,50 @@ describe("jar queries", () => {
     const deleted = await jarQueries.deleteJar(pool, "00000000-0000-0000-0000-000000000000");
     expect(deleted).toBe(false);
   });
+
+  it("assigns a unique share_code on creation", async () => {
+    const a = await jarQueries.createJar(pool, {
+      ownerId: testUserId,
+      name: "A",
+      appearance: TEST_APPEARANCE,
+      config: TEST_CONFIG,
+    });
+    const b = await jarQueries.createJar(pool, {
+      ownerId: testUserId,
+      name: "B",
+      appearance: TEST_APPEARANCE,
+      config: TEST_CONFIG,
+    });
+    expect(a.shareCode).toMatch(/^[A-HJ-NP-Z2-9]{6,7}$/);
+    expect(b.shareCode).toMatch(/^[A-HJ-NP-Z2-9]{6,7}$/);
+    expect(a.shareCode).not.toBe(b.shareCode);
+  });
+
+  it("looks up a jar by share_code", async () => {
+    const created = await jarQueries.createJar(pool, {
+      ownerId: testUserId,
+      name: "Shareable",
+      appearance: TEST_APPEARANCE,
+      config: TEST_CONFIG,
+    });
+    const found = await jarQueries.getJarByShareCode(pool, created.shareCode);
+    expect(found?.id).toBe(created.id);
+    expect(found?.shareCode).toBe(created.shareCode);
+  });
+
+  it("returns null for an unknown share_code", async () => {
+    const found = await jarQueries.getJarByShareCode(pool, "ZZZZZZZ");
+    expect(found).toBeNull();
+  });
+
+  it("preserves share_code through update", async () => {
+    const jar = await jarQueries.createJar(pool, {
+      ownerId: testUserId,
+      name: "Stable",
+      appearance: TEST_APPEARANCE,
+      config: TEST_CONFIG,
+    });
+    const updated = await jarQueries.updateJar(pool, jar.id, { name: "Renamed" });
+    expect(updated?.shareCode).toBe(jar.shareCode);
+  });
 });

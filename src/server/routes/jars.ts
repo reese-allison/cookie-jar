@@ -155,6 +155,35 @@ jarRouter.delete("/:id/star", requireAuth, async (req: AuthenticatedRequest, res
 // Get a jar by ID. Access rules: owner, public, template, or on the
 // allowlist. Everything else is 403 — config and appearance carry custom
 // URLs and sealed settings we treat as sensitive.
+// Look up a jar by its permanent share_code. This is the new URL resolution
+// path: `/<shareCode>` in the browser → client calls this → opens-or-joins a
+// room on the resolved jar. Gated on `canJoinJar` (not `canAccessJar`) so
+// the code-holder model still works for private+no-allowlist jars, matching
+// what they'd be allowed to do once they POST /api/rooms.
+jarRouter.get("/by-share-code/:code", attachUser, async (req: AuthenticatedRequest, res) => {
+  try {
+    const jar = await jarQueries.getJarByShareCode(pool, asString(req.params.code));
+    if (!jar) {
+      res.status(404).json({ error: "Jar not found" });
+      return;
+    }
+    if (
+      !canJoinJar(jar, {
+        userId: req.user?.id ?? null,
+        email: req.user?.email ?? null,
+        emailVerified: req.user?.emailVerified === true,
+      })
+    ) {
+      res.status(403).json({ error: "Not authorized to access this jar" });
+      return;
+    }
+    res.json(jar);
+  } catch (err) {
+    logger.error({ err }, "GET /api/jars/by-share-code/:code failed");
+    res.status(500).json({ error: "Failed to look up jar" });
+  }
+});
+
 jarRouter.get("/:id", attachUser, async (req: AuthenticatedRequest, res) => {
   try {
     const jar = await jarQueries.getJarById(pool, asString(req.params.id));

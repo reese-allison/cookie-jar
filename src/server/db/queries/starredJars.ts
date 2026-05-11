@@ -80,6 +80,7 @@ export async function listStarredJarsWithRooms(
       name: row.name as string,
       appearance: row.appearance as JarAppearance,
       config: row.config as JarConfig,
+      shareCode: row.share_code as string,
       isTemplate: row.is_template as boolean,
       isPublic: row.is_public as boolean,
       createdAt: (row.created_at as Date).toISOString(),

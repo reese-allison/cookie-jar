@@ -1,7 +1,20 @@
 import type { Jar, JarAppearance, JarConfig, RoomState } from "@shared/types";
+import { generateRoomCode } from "@shared/validation";
 import type pg from "pg";
 import type { Queryable } from "../transaction";
 import { withTransaction } from "../transaction";
+
+// Postgres auto-names the UNIQUE constraint added in the share_code migration.
+// Used so createJar can distinguish a share_code collision (retryable) from
+// any other 23505 violation, which should bubble.
+const JAR_SHARE_CODE_UNIQUE_CONSTRAINT = "jars_share_code_unique";
+const SHARE_CODE_COLLISION_RETRIES = 5;
+
+function constraintOf(err: unknown): string | undefined {
+  const e = err as { code?: string; constraint?: string };
+  if (e.code !== "23505") return undefined;
+  return e.constraint;
+}
 
 interface ActiveRoomSummary {
   code: string;
@@ -39,6 +52,7 @@ function rowToJar(row: Record<string, unknown>): Jar {
     name: row.name as string,
     appearance: row.appearance as JarAppearance,
     config: row.config as JarConfig,
+    shareCode: row.share_code as string,
     isTemplate: row.is_template as boolean,
     isPublic: row.is_public as boolean,
     createdAt: (row.created_at as Date).toISOString(),
@@ -47,24 +61,48 @@ function rowToJar(row: Record<string, unknown>): Jar {
 }
 
 export async function createJar(db: Queryable, input: CreateJarInput): Promise<Jar> {
-  const { rows } = await db.query(
-    `INSERT INTO jars (owner_id, name, appearance, config, is_template, is_public)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [
-      input.ownerId,
-      input.name,
-      JSON.stringify(input.appearance ?? {}),
-      JSON.stringify(input.config ?? {}),
-      input.isTemplate ?? false,
-      input.isPublic ?? false,
-    ],
-  );
-  return rowToJar(rows[0]);
+  // share_code is NOT NULL; generate at the app layer (rather than DB-side)
+  // so it goes through the same `generateRoomCode` codepath as room codes —
+  // single alphabet/length policy. Collisions are vanishingly rare at our
+  // scale but retry mirrors `createRoom`'s pattern for parity.
+  for (let attempt = 0; attempt < SHARE_CODE_COLLISION_RETRIES; attempt++) {
+    const shareCode = generateRoomCode();
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO jars (owner_id, name, appearance, config, share_code, is_template, is_public)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          input.ownerId,
+          input.name,
+          JSON.stringify(input.appearance ?? {}),
+          JSON.stringify(input.config ?? {}),
+          shareCode,
+          input.isTemplate ?? false,
+          input.isPublic ?? false,
+        ],
+      );
+      return rowToJar(rows[0]);
+    } catch (err) {
+      if (
+        constraintOf(err) === JAR_SHARE_CODE_UNIQUE_CONSTRAINT &&
+        attempt < SHARE_CODE_COLLISION_RETRIES - 1
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("createJar exhausted share_code collision retries");
 }
 
 export async function getJarById(pool: pg.Pool, id: string): Promise<Jar | null> {
   const { rows } = await pool.query("SELECT * FROM jars WHERE id = $1", [id]);
+  return rows.length > 0 ? rowToJar(rows[0]) : null;
+}
+
+export async function getJarByShareCode(pool: pg.Pool, shareCode: string): Promise<Jar | null> {
+  const { rows } = await pool.query("SELECT * FROM jars WHERE share_code = $1", [shareCode]);
   return rows.length > 0 ? rowToJar(rows[0]) : null;
 }
 

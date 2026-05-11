@@ -10,6 +10,7 @@ function makeJar(overrides: Partial<Jar> = {}): Jar {
     name: "Jar",
     appearance: makeJarAppearance(),
     config: makeJarConfig(),
+    shareCode: "ABC2DEF",
     isTemplate: false,
     isPublic: false,
     createdAt: new Date().toISOString(),

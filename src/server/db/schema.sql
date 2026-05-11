@@ -64,6 +64,10 @@ CREATE TABLE jars (
   name TEXT NOT NULL,
   appearance JSONB NOT NULL DEFAULT '{}',
   config JSONB NOT NULL DEFAULT '{}',
+  -- Permanent per-jar URL identifier. Generated at creation and reused for
+  -- every room session, so a single share-link works forever regardless of
+  -- room churn. Same alphabet/format as room codes (see ROOM_CODE_CHARS).
+  share_code TEXT NOT NULL UNIQUE CHECK (share_code ~ '^[A-HJ-NP-Z2-9]{6,7}$'),
   is_template BOOLEAN NOT NULL DEFAULT false,
   is_public BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -71,6 +75,7 @@ CREATE TABLE jars (
 );
 
 CREATE INDEX idx_jars_owner_id ON jars(owner_id);
+CREATE INDEX idx_jars_share_code ON jars(share_code);
 
 -- Notes (items inside jars)
 CREATE TABLE notes (

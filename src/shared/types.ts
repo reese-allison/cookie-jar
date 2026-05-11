@@ -97,6 +97,13 @@ export interface Jar {
   name: string;
   appearance: JarAppearance;
   config: JarConfig;
+  /**
+   * Permanent per-jar URL identifier. Stable across the jar's entire lifetime
+   * — every room session reuses it, so the share-link `/<shareCode>` never
+   * needs to change. Same alphabet/format as room codes; see
+   * `generateRoomCode()` and the format CHECK on `jars.share_code`.
+   */
+  shareCode: string;
   isTemplate: boolean;
   isPublic: boolean;
   createdAt: string;
