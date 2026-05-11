@@ -84,12 +84,25 @@ async function markExistingMigrationsApplied(pool) {
 
 async function main() {
   const pool = new pg.Pool({ connectionString: databaseUrl });
+  let freshSchema = false;
   try {
-    await applySchemaIfMissing(pool);
-    const marked = await markExistingMigrationsApplied(pool);
-    if (marked > 0) {
+    freshSchema = await applySchemaIfMissing(pool);
+    // Only mark migrations as pre-applied on the FIRST-EVER deploy, where we
+    // just loaded schema.sql wholesale. Doing this on an existing DB would
+    // falsely mark any genuinely-new migration as applied without running it
+    // — pgmigrations would say "done" while the schema is still behind. On
+    // an existing DB, fall through to node-pg-migrate and let it apply only
+    // what's actually pending.
+    if (freshSchema) {
+      const marked = await markExistingMigrationsApplied(pool);
+      if (marked > 0) {
+        console.log(
+          `bootstrap: marked ${marked} migration(s) as pre-applied (already reflected in schema.sql)`,
+        );
+      }
+    } else {
       console.log(
-        `bootstrap: marked ${marked} migration(s) as pre-applied (already reflected in schema.sql)`,
+        "bootstrap: existing DB — skipping mark-as-applied, node-pg-migrate will run any pending migrations",
       );
     }
   } finally {
