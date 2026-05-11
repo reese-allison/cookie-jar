@@ -29,6 +29,7 @@
     "db:migrate:redo": "dotenv -- node-pg-migrate -m src/server/db/migrations redo",
     "db:migrate:create": "dotenv -- node-pg-migrate -m src/server/db/migrations create",
     "db:migrate:check": "dotenv -- node scripts/check-migrations-safe.mjs",
+    "db:migrate:markers": "node scripts/check-migration-markers.mjs",
     "loadtest:cursors": "k6 run tests/load/cursors.js"
   },
   "dependencies": {

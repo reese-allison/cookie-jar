@@ -6,8 +6,15 @@
 -- UNIQUE constraint, its format CHECK, and its index can all go.
 --
 -- This is genuinely destructive — codes are gone after this runs and the
--- down migration restores only the column shape, not the data. Deploy with
--- ALLOW_DESTRUCTIVE_MIGRATION=1 for the release that ships this.
+-- rollback (Down section below) restores only the column shape, not the
+-- data. Deploy with ALLOW_DESTRUCTIVE_MIGRATION=1 for the release that
+-- ships this.
+--
+-- (Don't use the phrase "down migration" anywhere in this file except as
+--  the section marker on its own line — node-pg-migrate's parser uses a
+--  loose regex that'll happily match it mid-comment and chop the Up
+--  section short. That's how this file silently no-op'd in dev + prod
+--  before it was caught.)
 --
 -- Pre-flight: the application code in this same release no longer reads or
 -- writes rooms.code. Old `/<roomCode>` bookmarks stop resolving at this

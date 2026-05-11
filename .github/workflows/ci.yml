@@ -36,6 +36,12 @@ jobs:
       # must have a mirrored test (see scripts/find-missing-tests.mjs).
       - name: Test-coverage gate (every component/hook/lib/store has a test)
         run: bun run test:missing
+      # Migration-marker check: catches the foot-gun where a `.sql` migration
+      # has a comment line that node-pg-migrate's loose marker regex matches
+      # (e.g. "-- down migration restores the shape"), causing the parser to
+      # chop the Up section short and silently no-op the SQL body.
+      - name: Migration-marker safety check
+        run: bun run db:migrate:markers
       # NB: `db:migrate:check` lives in the deploy pipeline, not here. It
       # diffs the migrations directory against pgmigrations in the target
       # database — a feature-branch CI bootstraps a fresh DB so nothing is
