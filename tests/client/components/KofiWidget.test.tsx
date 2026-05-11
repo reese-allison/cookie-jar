@@ -74,13 +74,31 @@ describe("KofiWidget", () => {
     expect(draw).toHaveBeenCalledTimes(2);
   });
 
-  it("removes the floating chat container on unmount", () => {
+  it("removes every Ko-fi DOM element on unmount (button wrapper + popup container)", () => {
+    // Regression guard: the widget previously only swept .floatingchat-container,
+    // leaving the separate Support-button wrapper behind. The button then
+    // bled through to other screens (e.g. inside a room) on remount.
     const { unmount } = render(<KofiWidget />);
-    const container = document.createElement("div");
-    container.className = "floatingchat-container";
-    document.body.appendChild(container);
+    const popup = document.createElement("div");
+    popup.className = "floatingchat-container";
+    const buttonWrap = document.createElement("div");
+    buttonWrap.className = "floatingchat-donatebutton-wrap-anim";
+    const overlayRoot = document.createElement("div");
+    overlayRoot.id = "kofi-widget-overlay";
+    document.body.append(popup, buttonWrap, overlayRoot);
     unmount();
     expect(document.querySelector(".floatingchat-container")).toBeNull();
+    expect(document.querySelector(".floatingchat-donatebutton-wrap-anim")).toBeNull();
+    expect(document.getElementById("kofi-widget-overlay")).toBeNull();
+  });
+
+  it("leaves the Ko-fi <script> tag in place on unmount so a remount can reuse it", () => {
+    // The cached script avoids re-fetching from storage.ko-fi.com when the
+    // user bounces between Landing and a room.
+    const { unmount } = render(<KofiWidget />);
+    expect(getScript()).not.toBeNull();
+    unmount();
+    expect(getScript()).not.toBeNull();
   });
 
   it("adds a title to Ko-fi iframes for accessibility", () => {
