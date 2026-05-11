@@ -1,8 +1,14 @@
-import { MAX_NOTE_URL_LENGTH, NOTE_STYLES, ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "./constants";
+import {
+  MAX_NOTE_URL_LENGTH,
+  NOTE_STYLES,
+  ROOM_CODE_CHARS,
+  ROOM_CODE_LEGACY_LENGTH,
+  ROOM_CODE_LENGTH,
+} from "./constants";
 import type { NoteStyle } from "./types";
 
 export function isValidRoomCode(code: string): boolean {
-  if (code.length !== ROOM_CODE_LENGTH) return false;
+  if (code.length !== ROOM_CODE_LENGTH && code.length !== ROOM_CODE_LEGACY_LENGTH) return false;
   return [...code].every((char) => ROOM_CODE_CHARS.includes(char));
 }
 

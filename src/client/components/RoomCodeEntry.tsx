@@ -1,3 +1,4 @@
+import { ROOM_CODE_LENGTH } from "@shared/constants";
 import { useState } from "react";
 import { CreateJar } from "./CreateJar";
 import { SegmentedControl } from "./SegmentedControl";
@@ -65,7 +66,7 @@ export function RoomCodeEntry({
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="Room Code"
               aria-label="Room code"
-              maxLength={6}
+              maxLength={ROOM_CODE_LENGTH}
               className="room-code-input"
               autoComplete="off"
               autoCapitalize="characters"

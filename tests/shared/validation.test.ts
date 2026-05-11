@@ -11,27 +11,35 @@ import {
 } from "../../src/shared/validation";
 
 describe("isValidRoomCode", () => {
-  it("accepts a valid 6-char room code", () => {
+  it("accepts a valid 7-char room code (current generator length)", () => {
+    expect(isValidRoomCode("AB2CDEF")).toBe(true);
+  });
+
+  // 6-char codes predate the bump from 6 → 7. Closed-room rows from before
+  // the bump keep their original codes, and stale share-links resolving
+  // those codes must keep working as pivots to the underlying jar.
+  it("accepts a legacy 6-char room code", () => {
     expect(isValidRoomCode("AB2CDE")).toBe(true);
   });
 
   it("rejects codes that are too short", () => {
     expect(isValidRoomCode("AB2C")).toBe(false);
+    expect(isValidRoomCode("AB2CD")).toBe(false);
   });
 
   it("rejects codes that are too long", () => {
-    expect(isValidRoomCode("AB2CDEF")).toBe(false);
+    expect(isValidRoomCode("AB2CDEFG")).toBe(false);
   });
 
   it("rejects codes with ambiguous characters (I, O, 1, 0)", () => {
-    expect(isValidRoomCode("AIBCDE")).toBe(false);
-    expect(isValidRoomCode("A0BCDE")).toBe(false);
-    expect(isValidRoomCode("A1BCDE")).toBe(false);
-    expect(isValidRoomCode("AOBCDE")).toBe(false);
+    expect(isValidRoomCode("AIBCDEF")).toBe(false);
+    expect(isValidRoomCode("A0BCDEF")).toBe(false);
+    expect(isValidRoomCode("A1BCDEF")).toBe(false);
+    expect(isValidRoomCode("AOBCDEF")).toBe(false);
   });
 
   it("rejects lowercase characters", () => {
-    expect(isValidRoomCode("abcdef")).toBe(false);
+    expect(isValidRoomCode("abcdefg")).toBe(false);
   });
 });
 

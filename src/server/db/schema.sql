@@ -99,7 +99,10 @@ CREATE INDEX idx_notes_pulled_by_user_id ON notes(pulled_by_user_id);
 -- Rooms (live sessions around a jar)
 CREATE TABLE rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code TEXT NOT NULL UNIQUE CHECK (code ~ '^[A-HJ-NP-Z2-9]{6}$'),
+  -- New codes are 7 chars; 6-char codes are preserved on legacy closed-room
+  -- rows so old share-links keep resolving (see ROOM_CODE_LENGTH /
+  -- ROOM_CODE_LEGACY_LENGTH in src/shared/constants.ts).
+  code TEXT NOT NULL UNIQUE CHECK (code ~ '^[A-HJ-NP-Z2-9]{6,7}$'),
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'locked', 'closed')),
   max_participants INT NOT NULL DEFAULT 20,

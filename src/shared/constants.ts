@@ -19,7 +19,14 @@ export const MAX_NOTE_URL_LENGTH = 2000;
 export const MAX_DISPLAY_NAME_LENGTH = 30;
 
 // Room settings
-export const ROOM_CODE_LENGTH = 6;
+// New codes are generated at this length. 32^7 ≈ 34B keeps the
+// birthday-paradox collision rate negligible past 100k+ rooms — important
+// because closed rooms are kept indefinitely (their codes are permanent
+// identifiers for "tombstone" share-links that pivot to the jar).
+export const ROOM_CODE_LENGTH = 7;
+// Pre-bump rooms have 6-char codes. Validators and the DB CHECK accept
+// either length so old share-links keep resolving.
+export const ROOM_CODE_LEGACY_LENGTH = 6;
 export const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I/O/1/0 to avoid confusion
 export const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
 
