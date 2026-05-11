@@ -27,7 +27,7 @@ function okJson(body: unknown) {
 
 describe("useJarActions.openRoomForJar", () => {
   it("creates a room and joins it with the user's display name", async () => {
-    fetchMock.mockResolvedValueOnce(okJson({ code: "ROOM01" }));
+    fetchMock.mockResolvedValueOnce(okJson({ id: "room-01-uuid" }));
     const { result, joinRoom, setError } = setupHook();
     await act(async () => {
       await result.current.openRoomForJar("jar-1");
@@ -40,7 +40,7 @@ describe("useJarActions.openRoomForJar", () => {
         body: JSON.stringify({ jarId: "jar-1" }),
       }),
     );
-    expect(joinRoom).toHaveBeenCalledWith("ROOM01", "Alice");
+    expect(joinRoom).toHaveBeenCalledWith("room-01-uuid", "Alice");
     expect(setError).not.toHaveBeenCalled();
   });
 
@@ -85,7 +85,7 @@ describe("useJarActions.createJarAndJoin", () => {
   it("creates the jar then opens a room and toggles isCreating", async () => {
     fetchMock
       .mockResolvedValueOnce(okJson({ id: "jar-7" })) // POST /api/jars
-      .mockResolvedValueOnce(okJson({ code: "RM7777" })); // POST /api/rooms
+      .mockResolvedValueOnce(okJson({ id: "room-7-uuid" })); // POST /api/rooms
     const { result, joinRoom } = setupHook();
     expect(result.current.isCreating).toBe(false);
 
@@ -104,7 +104,7 @@ describe("useJarActions.createJarAndJoin", () => {
       "/api/jars",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "Standup" }) }),
     );
-    expect(joinRoom).toHaveBeenCalledWith("RM7777", "Alice");
+    expect(joinRoom).toHaveBeenCalledWith("room-7-uuid", "Alice");
     expect(result.current.isCreating).toBe(false);
   });
 
@@ -138,7 +138,7 @@ describe("useJarActions.cloneTemplateAndJoin", () => {
   it("clones the template then opens a room", async () => {
     fetchMock
       .mockResolvedValueOnce(okJson({ id: "clone-1" }))
-      .mockResolvedValueOnce(okJson({ code: "CLN001" }));
+      .mockResolvedValueOnce(okJson({ id: "room-cln-uuid" }));
     const { result, joinRoom } = setupHook();
     await act(async () => {
       await result.current.cloneTemplateAndJoin("template-x");
@@ -148,7 +148,7 @@ describe("useJarActions.cloneTemplateAndJoin", () => {
       "/api/jars/template-x/clone",
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
-    expect(joinRoom).toHaveBeenCalledWith("CLN001", "Alice");
+    expect(joinRoom).toHaveBeenCalledWith("room-cln-uuid", "Alice");
   });
 
   it("reports the clone error and skips the room call", async () => {

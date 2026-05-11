@@ -10,7 +10,7 @@ const REQUIRED_INDEXES = [
   { table: "pull_history", column: "room_id" },
   { table: "notes", column: "jar_id" },
   { table: "jars", column: "owner_id" },
-  { table: "rooms", column: "code" },
+  { table: "jars", column: "share_code" },
 ];
 
 let pool: pg.Pool;

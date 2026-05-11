@@ -11,18 +11,18 @@ import type { ServerToClientEvents } from "../../../src/shared/types";
 let pool: pg.Pool;
 let testUserId: string;
 let testJarId: string;
-let testRoomCode: string;
+let testRoomId: string;
 let httpServer: ReturnType<typeof createServer>;
 let port: number;
 
-function connectClient(roomCode?: string, displayName?: string): ClientSocket {
+function connectClient(roomId?: string, displayName?: string): ClientSocket {
   const client = ioClient(`http://localhost:${port}`, {
     autoConnect: false,
     transports: ["websocket"],
   });
-  if (roomCode) {
+  if (roomId) {
     client.on("connect", () => {
-      client.emit("room:join", roomCode, displayName ?? "TestUser");
+      client.emit("room:join", roomId, displayName ?? "TestUser");
     });
   }
   return client;
@@ -84,7 +84,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await pool.query("DELETE FROM rooms WHERE jar_id = $1", [testJarId]);
   const room = await roomQueries.createRoom(pool, { jarId: testJarId });
-  testRoomCode = room.code;
+  testRoomId = room.id;
 });
 
 const clients: ClientSocket[] = [];
@@ -104,20 +104,20 @@ afterAll(async () => {
 
 describe("room socket handlers", () => {
   it("joins a room and receives room state", async () => {
-    const client = connectClient(testRoomCode, "Alice");
+    const client = connectClient(testRoomId, "Alice");
     clients.push(client);
 
     const statePromise = waitForEvent(client, "room:state");
     client.connect();
 
     const [room] = await statePromise;
-    expect(room.code).toBe(testRoomCode);
+    expect(room.id).toBe(testRoomId);
     expect(room.members).toHaveLength(1);
     expect(room.members[0].displayName).toBe("Alice");
   });
 
   it("broadcasts member_joined to existing users", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
+    const alice = connectClient(testRoomId, "Alice");
     clients.push(alice);
 
     const aliceReady = waitForEvent(alice, "room:state");
@@ -125,7 +125,7 @@ describe("room socket handlers", () => {
     await aliceReady;
 
     // Now Bob joins — Alice should receive member_joined
-    const bob = connectClient(testRoomCode, "Bob");
+    const bob = connectClient(testRoomId, "Bob");
     clients.push(bob);
 
     const joinPromise = waitForEvent(alice, "room:member_joined");
@@ -136,8 +136,8 @@ describe("room socket handlers", () => {
   });
 
   it("broadcasts member_left when a user disconnects", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    const bob = connectClient(testRoomCode, "Bob");
+    const alice = connectClient(testRoomId, "Alice");
+    const bob = connectClient(testRoomId, "Bob");
     clients.push(alice, bob);
 
     alice.connect();
@@ -156,8 +156,8 @@ describe("room socket handlers", () => {
 
 describe("cursor broadcasting", () => {
   it("broadcasts cursor position to other users in the room", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
-    const bob = connectClient(testRoomCode, "Bob");
+    const alice = connectClient(testRoomId, "Alice");
+    const bob = connectClient(testRoomId, "Bob");
     clients.push(alice, bob);
 
     alice.connect();
@@ -177,7 +177,7 @@ describe("cursor broadcasting", () => {
   });
 
   it("does not broadcast cursor to the sender", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
+    const alice = connectClient(testRoomId, "Alice");
     clients.push(alice);
 
     alice.connect();
@@ -202,7 +202,7 @@ describe("cursor broadcasting", () => {
 
 describe("jar:refresh", () => {
   it("rejects jar:refresh from anonymous user (not owner)", async () => {
-    const alice = connectClient(testRoomCode, "Alice");
+    const alice = connectClient(testRoomId, "Alice");
     clients.push(alice);
 
     alice.connect();
@@ -228,7 +228,7 @@ describe("room errors", () => {
     await new Promise<void>((resolve) => client.on("connect", resolve));
 
     const errorPromise = waitForEvent(client, "room:error");
-    client.emit("room:join", "ZZZZZZ", "Ghost");
+    client.emit("room:join", "00000000-0000-0000-0000-000000000000", "Ghost");
 
     const [error] = await errorPromise;
     expect(error).toContain("not found");

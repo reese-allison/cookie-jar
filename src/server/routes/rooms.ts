@@ -105,18 +105,3 @@ roomRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
     res.status(500).json({ error: "Failed to create room" });
   }
 });
-
-// Look up a room by code (public)
-roomRouter.get("/:code", async (req, res) => {
-  try {
-    const room = await roomQueries.getRoomByCode(pool, req.params.code.toUpperCase());
-    if (!room) {
-      res.status(404).json({ error: "Room not found" });
-      return;
-    }
-    res.json(room);
-  } catch (err) {
-    logger.error({ err }, "GET /api/rooms/:code failed");
-    res.status(500).json({ error: "Failed to get room" });
-  }
-});

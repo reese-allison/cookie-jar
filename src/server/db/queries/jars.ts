@@ -17,7 +17,7 @@ function constraintOf(err: unknown): string | undefined {
 }
 
 interface ActiveRoomSummary {
-  code: string;
+  id: string;
   state: RoomState;
   createdAt: string;
 }
@@ -129,7 +129,7 @@ export async function listOwnedJarsWithRooms(
     `SELECT j.*,
        COALESCE(
          (SELECT json_agg(json_build_object(
-                   'code', r.code,
+                   'id', r.id,
                    'state', r.state,
                    'createdAt', r.created_at
                  ) ORDER BY r.created_at DESC)
@@ -146,11 +146,11 @@ export async function listOwnedJarsWithRooms(
     const jar = rowToJar(row);
     const activeRooms = (
       row.active_rooms as Array<{
-        code: string;
+        id: string;
         state: RoomState;
         createdAt: string;
       }>
-    ).map((r) => ({ code: r.code, state: r.state, createdAt: r.createdAt }));
+    ).map((r) => ({ id: r.id, state: r.state, createdAt: r.createdAt }));
     return { ...jar, activeRooms };
   });
 }

@@ -45,7 +45,7 @@ function waitForEvent<K extends keyof ServerToClientEvents>(
 
 async function makeJarWithRoom(
   configOverrides: Parameters<typeof makeJarConfig>[0] = {},
-): Promise<{ jar: Jar; code: string }> {
+): Promise<{ jar: Jar; roomId: string }> {
   const jar = await jarQueries.createJar(pool, {
     ownerId,
     name: "Config Matrix Jar",
@@ -54,7 +54,7 @@ async function makeJarWithRoom(
   });
   // Directly insert the room — POST /rooms requires auth, which we bypass.
   const room = await roomQueries.createRoom(pool, { jarId: jar.id });
-  return { jar, code: room.code };
+  return { jar, roomId: room.id };
 }
 
 beforeAll(async () => {
@@ -103,23 +103,23 @@ afterAll(async () => {
 
 describe("allowlist gate on room:join", () => {
   it("anon user joins a private jar with no allowlist (legacy code-holder)", async () => {
-    const { code } = await makeJarWithRoom();
+    const { roomId } = await makeJarWithRoom();
     const client = connectAnon();
     clients.push(client);
-    client.on("connect", () => client.emit("room:join", code, "Nobody"));
+    client.on("connect", () => client.emit("room:join", roomId, "Nobody"));
     const statePromise = waitForEvent(client, "room:state");
     client.connect();
     const [room] = await statePromise;
-    expect(room.code).toBe(code);
+    expect(room.id).toBe(roomId);
   });
 
   it("anon user is rejected when the jar has an allowlist set", async () => {
-    const { code } = await makeJarWithRoom({
+    const { roomId } = await makeJarWithRoom({
       allowedEmails: ["invited@example.com"],
     });
     const client = connectAnon();
     clients.push(client);
-    client.on("connect", () => client.emit("room:join", code, "Snooper"));
+    client.on("connect", () => client.emit("room:join", roomId, "Snooper"));
     const errorPromise = waitForEvent(client, "room:error");
     client.connect();
     const [err] = await errorPromise;
@@ -129,10 +129,10 @@ describe("allowlist gate on room:join", () => {
 
 describe("lock semantics", () => {
   it("blocks note:add while jarConfig.locked is true", async () => {
-    const { code } = await makeJarWithRoom({ locked: true });
+    const { roomId } = await makeJarWithRoom({ locked: true });
     const client = connectAnon();
     clients.push(client);
-    client.on("connect", () => client.emit("room:join", code, "LockTester"));
+    client.on("connect", () => client.emit("room:join", roomId, "LockTester"));
     client.connect();
     await waitForEvent(client, "room:state");
     await waitForEvent(client, "note:state");
@@ -153,10 +153,10 @@ describe("close-on-last-leave", () => {
     // LAST_LEAVE_GRACE_MS=0 so the close fires synchronously — the 15 s
     // default grace only exists to survive a refresh in the live app.
     await withEnv("LAST_LEAVE_GRACE_MS", "0", async () => {
-      const { code, jar } = await makeJarWithRoom();
+      const { roomId, jar } = await makeJarWithRoom();
       const client = connectAnon();
       clients.push(client);
-      client.on("connect", () => client.emit("room:join", code, "Lonely"));
+      client.on("connect", () => client.emit("room:join", roomId, "Lonely"));
       client.connect();
       await waitForEvent(client, "room:state");
 
@@ -171,10 +171,10 @@ describe("close-on-last-leave", () => {
   it("keeps the room open when a user rejoins within the grace window", async () => {
     // Long enough that the rejoin definitely lands before the timer fires.
     await withEnv("LAST_LEAVE_GRACE_MS", "2000", async () => {
-      const { code, jar } = await makeJarWithRoom();
+      const { roomId, jar } = await makeJarWithRoom();
       const first = connectAnon();
       clients.push(first);
-      first.on("connect", () => first.emit("room:join", code, "Flakey"));
+      first.on("connect", () => first.emit("room:join", roomId, "Flakey"));
       first.connect();
       await waitForEvent(first, "room:state");
       first.disconnect();
@@ -182,7 +182,7 @@ describe("close-on-last-leave", () => {
       await new Promise((r) => setTimeout(r, 200));
       const second = connectAnon();
       clients.push(second);
-      second.on("connect", () => second.emit("room:join", code, "Flakey"));
+      second.on("connect", () => second.emit("room:join", roomId, "Flakey"));
       second.connect();
       await waitForEvent(second, "room:state");
 

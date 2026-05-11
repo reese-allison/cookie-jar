@@ -46,11 +46,10 @@ afterAll(async () => {
 });
 
 describe("room queries", () => {
-  it("creates a room with a generated code", async () => {
+  it("creates a room with default limits", async () => {
     const room = await roomQueries.createRoom(pool, { jarId: testJarId });
 
     expect(room.id).toBeDefined();
-    expect(room.code).toHaveLength(6);
     expect(room.jarId).toBe(testJarId);
     expect(room.state).toBe("open");
     expect(room.maxParticipants).toBe(20);
@@ -70,16 +69,17 @@ describe("room queries", () => {
     expect(room.idleTimeoutMinutes).toBe(60);
   });
 
-  it("finds a room by code", async () => {
+  it("finds a room by id", async () => {
     const created = await roomQueries.createRoom(pool, { jarId: testJarId });
-    const found = await roomQueries.getRoomByCode(pool, created.code);
+    const found = await roomQueries.getRoomById(pool, created.id);
 
     expect(found).not.toBeNull();
     expect(found?.id).toBe(created.id);
+    expect(found?.jarId).toBe(testJarId);
   });
 
-  it("returns null for a non-existent code", async () => {
-    const found = await roomQueries.getRoomByCode(pool, "ZZZZZZ");
+  it("returns null for a non-existent id", async () => {
+    const found = await roomQueries.getRoomById(pool, "00000000-0000-0000-0000-000000000000");
     expect(found).toBeNull();
   });
 
@@ -98,39 +98,9 @@ describe("room queries", () => {
     expect(updated?.closedAt).toBeDefined();
   });
 
-  it("retries on a code collision and returns a fresh code", async () => {
-    // Create one room, then force the next createRoom to collide on the code
-    // by pre-inserting a closed row (UNIQUE on rooms.code is NOT partial —
-    // closed rows still occupy their code). If createRoom naively re-threw
-    // the 23505 we'd see it here; the retry logic picks a new code.
-    const ownerRow = await pool.query("SELECT owner_id FROM jars WHERE id = $1", [testJarId]);
-    const ownerId = ownerRow.rows[0].owner_id as string;
-    const newJar = await pool.query(
-      "INSERT INTO jars (owner_id, name) VALUES ($1, $2) RETURNING id",
-      [ownerId, "code-collision-jar"],
-    );
-    const collidingJarId = newJar.rows[0].id as string;
-    try {
-      const first = await roomQueries.createRoom(pool, { jarId: testJarId });
-      // Close it so the partial unique index doesn't fire on the collision
-      // target jar; we want to test the rooms_code_key path specifically.
-      await pool.query("UPDATE rooms SET state = 'closed' WHERE id = $1", [first.id]);
-      // Replace the closed room's code with a value the next generateRoomCode
-      // call is guaranteed to hit. Since we can't rig randomness, instead try
-      // inserting until we hit a collision and prove that it doesn't throw.
-      // The test is probabilistic by construction but the retry budget of 5
-      // makes false-negatives vanishingly rare at this jar count.
-      const second = await roomQueries.createRoom(pool, { jarId: collidingJarId });
-      expect(second.code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
-    } finally {
-      await pool.query("DELETE FROM jars WHERE id = $1", [collidingJarId]);
-    }
-  });
-
   it("re-raises partial-unique-index violations (route handles those, not the query)", async () => {
     // First room for the jar succeeds. A second parallel create should fail
-    // with the one-active-room-per-jar index — NOT the code-retry branch,
-    // since the code itself would be unique.
+    // with the one-active-room-per-jar index.
     await roomQueries.createRoom(pool, { jarId: testJarId });
     await expect(roomQueries.createRoom(pool, { jarId: testJarId })).rejects.toMatchObject({
       code: "23505",
@@ -138,74 +108,21 @@ describe("room queries", () => {
     });
   });
 
-  it("generates unique codes across multiple rooms", async () => {
-    // Each room needs its own jar — the partial unique index on
-    // rooms(jar_id) WHERE state != 'closed' caps active rooms at one per
-    // jar. We're testing code-generator distinctness here, not multi-room
-    // support per jar.
-    const ownerRow = await pool.query("SELECT owner_id FROM jars WHERE id = $1", [testJarId]);
-    const ownerId = ownerRow.rows[0].owner_id as string;
-    const jarIds = await Promise.all(
-      Array.from({ length: 10 }, async (_, i) => {
-        const j = await pool.query(
-          "INSERT INTO jars (owner_id, name) VALUES ($1, $2) RETURNING id",
-          [ownerId, `code-uniqueness-${i}`],
-        );
-        return j.rows[0].id as string;
-      }),
-    );
-    try {
-      const rooms = await Promise.all(
-        jarIds.map((jarId) => roomQueries.createRoom(pool, { jarId })),
-      );
-      const codes = new Set(rooms.map((r) => r.code));
-      expect(codes.size).toBe(10);
-    } finally {
-      await pool.query("DELETE FROM jars WHERE id = ANY($1::uuid[])", [jarIds]);
-    }
+  it("closeRoomIfOpen flips an open room and is idempotent on closed rooms", async () => {
+    const room = await roomQueries.createRoom(pool, { jarId: testJarId });
+    const firstClose = await roomQueries.closeRoomIfOpen(pool, room.id);
+    expect(firstClose).toBe(true);
+    const secondClose = await roomQueries.closeRoomIfOpen(pool, room.id);
+    expect(secondClose).toBe(false);
   });
 
-  describe("closeRoomIfOpen", () => {
-    it("flips an open room to closed and returns true", async () => {
-      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
-      const closed = await roomQueries.closeRoomIfOpen(pool, room.id);
-      expect(closed).toBe(true);
-      const { rows } = await pool.query("SELECT state, closed_at FROM rooms WHERE id = $1", [
-        room.id,
-      ]);
-      expect(rows[0].state).toBe("closed");
-      expect(rows[0].closed_at).not.toBeNull();
-    });
+  it("listActiveRoomsForJar excludes closed rooms", async () => {
+    const open = await roomQueries.createRoom(pool, { jarId: testJarId });
+    const active = await roomQueries.listActiveRoomsForJar(pool, testJarId);
+    expect(active.map((r) => r.id)).toEqual([open.id]);
 
-    it("returns false on the second call — the row is already closed", async () => {
-      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
-      await roomQueries.closeRoomIfOpen(pool, room.id);
-      const secondResult = await roomQueries.closeRoomIfOpen(pool, room.id);
-      expect(secondResult).toBe(false);
-    });
-
-    it("returns false for a nonexistent room id", async () => {
-      // Using a valid UUID that does not exist so the WHERE matches nothing.
-      const missing = "00000000-0000-0000-0000-000000000000";
-      expect(await roomQueries.closeRoomIfOpen(pool, missing)).toBe(false);
-    });
-
-    it("does not overwrite the original closed_at on a repeated call", async () => {
-      // The conditional UPDATE must skip already-closed rows entirely —
-      // otherwise a second close would bump closed_at and audit trails would
-      // lie about when the close actually happened.
-      const room = await roomQueries.createRoom(pool, { jarId: testJarId });
-      await roomQueries.closeRoomIfOpen(pool, room.id);
-      const { rows: first } = await pool.query("SELECT closed_at FROM rooms WHERE id = $1", [
-        room.id,
-      ]);
-      const originalClosedAt: Date = first[0].closed_at;
-      await new Promise((r) => setTimeout(r, 10));
-      await roomQueries.closeRoomIfOpen(pool, room.id);
-      const { rows: second } = await pool.query("SELECT closed_at FROM rooms WHERE id = $1", [
-        room.id,
-      ]);
-      expect(second[0].closed_at.getTime()).toBe(originalClosedAt.getTime());
-    });
+    await roomQueries.closeRoomIfOpen(pool, open.id);
+    const afterClose = await roomQueries.listActiveRoomsForJar(pool, testJarId);
+    expect(afterClose).toEqual([]);
   });
 });

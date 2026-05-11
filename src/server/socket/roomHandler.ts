@@ -77,7 +77,7 @@ async function reconcileAndRetryAdd(
   jarId: string,
   member: RoomMember,
   preSweepMembers: Map<string, RoomMember>,
-  dbRoom: NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>,
+  dbRoom: NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomById>>>,
 ): Promise<Awaited<ReturnType<typeof deps.presenceStore.addMemberIfUnderCap>>> {
   const live = await io.in(roomId).fetchSockets();
   const liveIds = new Set(live.map((s) => s.id));
@@ -97,7 +97,7 @@ async function commitJoin(
   socket: TypedSocket,
   ctx: SocketContext,
   deps: SocketDeps,
-  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomByCode>>,
+  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomById>>,
   displayName: string,
 ): Promise<{
   member: RoomMember;
@@ -244,15 +244,15 @@ export function registerRoomHandlers(
 
   socket.on(
     "room:join",
-    safe(async (code: string, displayName: string) => {
+    safe(async (roomId: string, displayName: string) => {
       if (!isValidDisplayName(displayName)) {
         socket.emit("room:error", "Display name must be 1-30 characters");
         return;
       }
-      // Room codes are stored uppercase. Normalize here too so the socket
-      // path matches the REST path — clients typing lowercase should still
-      // find the room.
-      const dbRoom = await roomQueries.getRoomByCode(pool, code.toUpperCase());
+      // Rooms are identified internally by UUID — the URL identifier is the
+      // jar's permanent share_code, resolved via POST /api/rooms before this
+      // event fires. See createJoinFromCode on the client.
+      const dbRoom = await roomQueries.getRoomById(pool, roomId);
       const joinError = validateRoomJoin(dbRoom);
       if (joinError || !dbRoom) {
         socket.emit("room:error", joinError ?? "Room not found");
@@ -265,9 +265,17 @@ export function registerRoomHandlers(
       const committed = await commitJoin(io, socket, ctx, deps, dbRoom, displayName);
       if (!committed) return;
       const { member, jar, roomState, pulledMembers } = committed;
-      socket.emit("room:state", buildRoomState(dbRoom, pulledMembers, jar?.shareCode));
-      const jarConfig = jar?.config ?? null;
-      const jarAppearance = jar?.appearance ?? null;
+      // The room's FK guarantees the jar exists; commitJoin's return type is
+      // nullable only because getJarById is. A race where the jar got deleted
+      // between commitJoin's lookup and here would manifest as no jar — fail
+      // the join with a clean error instead of emitting partial state.
+      if (!jar) {
+        socket.emit("room:error", "Jar no longer exists");
+        return;
+      }
+      socket.emit("room:state", buildRoomState(dbRoom, pulledMembers, jar.shareCode));
+      const jarConfig = jar.config ?? null;
+      const jarAppearance = jar.appearance ?? null;
       await sendNoteState(
         socket,
         {

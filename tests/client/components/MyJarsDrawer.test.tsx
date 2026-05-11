@@ -61,14 +61,14 @@ describe("MyJarsDrawer component", () => {
     });
   });
 
-  it("lists owned jars by name with active room codes", async () => {
+  it("lists owned jars by name with a Join action when a room is active", async () => {
     fetchMock.mockResolvedValueOnce(
       mineResponse([
         {
           ...BASE_JAR,
           id: "j1",
           name: "Standup Prompts",
-          activeRooms: [{ code: "ABCDEF", state: "open", createdAt: BASE_JAR.createdAt }],
+          activeRooms: [{ id: "room-active-uuid", state: "open", createdAt: BASE_JAR.createdAt }],
         },
         {
           ...BASE_JAR,
@@ -82,26 +82,26 @@ describe("MyJarsDrawer component", () => {
     await waitFor(() => {
       expect(screen.getByText("Standup Prompts")).toBeDefined();
       expect(screen.getByText("Movie Night")).toBeDefined();
-      expect(screen.getByText("ABCDEF")).toBeDefined();
+      expect(screen.getByRole("button", { name: /join active room/i })).toBeDefined();
     });
   });
 
-  it("calls onJoinRoom with the code when Join is clicked", async () => {
+  it("calls onJoinRoom with the room id when Join is clicked", async () => {
     fetchMock.mockResolvedValueOnce(
       mineResponse([
         {
           ...BASE_JAR,
           id: "j1",
           name: "Standup",
-          activeRooms: [{ code: "ZYXWVU", state: "open", createdAt: BASE_JAR.createdAt }],
+          activeRooms: [{ id: "room-uuid-xyz", state: "open", createdAt: BASE_JAR.createdAt }],
         },
       ]),
     );
     const onJoinRoom = vi.fn();
     render(<MyJarsDrawer open onClose={vi.fn()} onJoinRoom={onJoinRoom} onCreateRoom={vi.fn()} />);
-    const joinBtn = await screen.findByRole("button", { name: /join/i });
+    const joinBtn = await screen.findByRole("button", { name: /join active room/i });
     fireEvent.click(joinBtn);
-    expect(onJoinRoom).toHaveBeenCalledWith("ZYXWVU");
+    expect(onJoinRoom).toHaveBeenCalledWith("room-uuid-xyz");
   });
 
   it("calls onCreateRoom with the jar id for jars without rooms", async () => {
@@ -133,7 +133,9 @@ describe("MyJarsDrawer component", () => {
             ...BASE_JAR,
             id: "s1",
             name: "Friend's Jar",
-            activeRooms: [{ code: "JOINME", state: "open", createdAt: BASE_JAR.createdAt }],
+            activeRooms: [
+              { id: "starred-room-uuid", state: "open", createdAt: BASE_JAR.createdAt },
+            ],
             hasAccess: true,
           },
         ],
@@ -143,7 +145,7 @@ describe("MyJarsDrawer component", () => {
     await waitFor(() => {
       expect(screen.getByText(/starred/i)).toBeDefined();
       expect(screen.getByText("Friend's Jar")).toBeDefined();
-      expect(screen.getByText("JOINME")).toBeDefined();
+      expect(screen.getByRole("button", { name: /join active room/i })).toBeDefined();
     });
   });
 

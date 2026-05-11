@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 interface UseJarActionsOptions {
   displayName: string;
-  joinRoom: (code: string, displayName: string) => void;
+  joinRoom: (roomId: string, displayName: string) => void;
   setError: (error: string | null) => void;
 }
 
@@ -24,7 +24,7 @@ export function useJarActions({ displayName, joinRoom, setError }: UseJarActions
           return;
         }
         const newRoom = await res.json();
-        joinRoom(newRoom.code, displayName);
+        joinRoom(newRoom.id, displayName);
       } catch {
         // Network-level failure (offline, DNS, CORS). Surface a friendly error
         // instead of letting the promise reject unhandled.

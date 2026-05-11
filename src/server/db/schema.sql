@@ -102,12 +102,10 @@ CREATE INDEX idx_notes_author_id ON notes(author_id);
 CREATE INDEX idx_notes_pulled_by_user_id ON notes(pulled_by_user_id);
 
 -- Rooms (live sessions around a jar)
+-- Room identification is internal-only via the UUID `id`. URL identity is
+-- the jar's permanent `share_code` — see `jars.share_code` above.
 CREATE TABLE rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- New codes are 7 chars; 6-char codes are preserved on legacy closed-room
-  -- rows so old share-links keep resolving (see ROOM_CODE_LENGTH /
-  -- ROOM_CODE_LEGACY_LENGTH in src/shared/constants.ts).
-  code TEXT NOT NULL UNIQUE CHECK (code ~ '^[A-HJ-NP-Z2-9]{6,7}$'),
   jar_id UUID NOT NULL REFERENCES jars(id) ON DELETE CASCADE,
   state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'locked', 'closed')),
   max_participants INT NOT NULL DEFAULT 20,
@@ -117,7 +115,6 @@ CREATE TABLE rooms (
   closed_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_rooms_code ON rooms(code);
 CREATE INDEX idx_rooms_jar_id ON rooms(jar_id);
 -- One active (non-closed) room per jar. Without this the app-layer check in
 -- POST /api/rooms races against simultaneous creates from the owner and an

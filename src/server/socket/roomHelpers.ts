@@ -18,7 +18,7 @@ import type { IdleTimeoutManager } from "./idleTimeout";
 import type { TypedServer } from "./server";
 
 export type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomByCode>>>;
+type DbRoom = NonNullable<Awaited<ReturnType<typeof roomQueries.getRoomById>>>;
 
 interface PullAttribution {
   pulledBy?: string | null;
@@ -130,10 +130,9 @@ export function pickColor(existing: RoomMember[]): string {
   );
 }
 
-export function buildRoomState(dbRoom: DbRoom, members: RoomMember[], shareCode?: string): Room {
+export function buildRoomState(dbRoom: DbRoom, members: RoomMember[], shareCode: string): Room {
   return {
     id: dbRoom.id,
-    code: dbRoom.code,
     shareCode,
     jarId: dbRoom.jarId,
     state: dbRoom.state,
@@ -241,7 +240,7 @@ export function startIdleTimeout(
 }
 
 export function validateRoomJoin(
-  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomByCode>>,
+  dbRoom: Awaited<ReturnType<typeof roomQueries.getRoomById>>,
 ): string | null {
   if (!dbRoom) return "Room not found";
   if (dbRoom.state === "closed") return "Room is closed";

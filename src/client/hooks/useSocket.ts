@@ -33,7 +33,7 @@ export function useSocket({ onAuthExpired }: UseSocketOptions = {}) {
   // Remembers the last successful join args so we can auto-rejoin after a
   // transparent reconnect — the server assigns a fresh socket id on reconnect
   // and has no memory of our presence, so the client has to re-emit room:join.
-  const lastJoinRef = useRef<{ code: string; displayName: string } | null>(null);
+  const lastJoinRef = useRef<{ roomId: string; displayName: string } | null>(null);
   // True after the first successful connect. Gates the auto-rejoin emit so
   // the INITIAL connect doesn't race with joinRoom()'s own explicit emit —
   // they'd both land at the server and peers would see the new member added
@@ -90,7 +90,7 @@ export function useSocket({ onAuthExpired }: UseSocketOptions = {}) {
       // and peers would see the member added twice.
       const last = lastJoinRef.current;
       if (hasConnectedRef.current && last) {
-        socket.emit("room:join", last.code, last.displayName);
+        socket.emit("room:join", last.roomId, last.displayName);
       }
       hasConnectedRef.current = true;
     });
@@ -231,7 +231,7 @@ export function useSocket({ onAuthExpired }: UseSocketOptions = {}) {
   ]);
 
   const joinRoom = useCallback(
-    (code: string, displayName: string) => {
+    (roomId: string, displayName: string) => {
       const socket = socketRef.current;
       if (!socket) return;
 
@@ -239,11 +239,11 @@ export function useSocket({ onAuthExpired }: UseSocketOptions = {}) {
       // Stash for the reconnect handler. If the server rejects this join
       // (room not found, full, closed), the matching room:error handler
       // clears lastJoinRef so we don't spin re-joining a dead room.
-      lastJoinRef.current = { code, displayName };
+      lastJoinRef.current = { roomId, displayName };
       if (!socket.connected) {
         socket.connect();
       }
-      socket.emit("room:join", code, displayName);
+      socket.emit("room:join", roomId, displayName);
     },
     [setJoining],
   );

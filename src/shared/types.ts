@@ -127,15 +127,12 @@ export interface RoomMember {
 
 export interface Room {
   id: string;
-  code: string;
   /**
-   * The jar's permanent share_code, mirrored onto room state so clients can
-   * use it for the URL bar without a second round-trip. Optional during the
-   * expand→contract rollout: old room rows existed before the column did.
-   * After the contract migration drops `rooms.code`, this becomes the only
-   * code field on Room and `code` goes away.
+   * The jar's permanent share_code, mirrored onto room state so the client
+   * can render the URL bar without a second round-trip. Identical across
+   * every session of the same jar — same code yesterday, today, forever.
    */
-  shareCode?: string;
+  shareCode: string;
   jarId: string;
   state: RoomState;
   maxParticipants: number;

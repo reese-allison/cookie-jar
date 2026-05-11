@@ -1,7 +1,8 @@
 import type { Jar, RoomState } from "@shared/types";
 
 export interface ActiveRoomSummary {
-  code: string;
+  /** Room UUID. Used as the socket-level join target via `joinRoom(id, ...)`. */
+  id: string;
   state: RoomState;
   createdAt: string;
 }

@@ -262,7 +262,7 @@ describe("POST /api/rooms — access + one-active", () => {
     asFriend();
     const res = await request(app).post("/api/rooms").send({ jarId: jar.id });
     expect(res.status).toBe(201);
-    expect(res.body.code).toBeDefined();
+    expect(res.body.id).toBeDefined();
   });
 
   it("stranger NOT on an allowlist gets 403", async () => {

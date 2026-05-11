@@ -2,7 +2,7 @@ import type { Jar, JarAppearance, JarConfig, RoomState } from "@shared/types";
 import type pg from "pg";
 
 interface StarredJarActiveRoom {
-  code: string;
+  id: string;
   state: RoomState;
   createdAt: string;
 }
@@ -59,7 +59,7 @@ export async function listStarredJarsWithRooms(
     `SELECT j.*,
        COALESCE(
          (SELECT json_agg(json_build_object(
-                   'code', r.code,
+                   'id', r.id,
                    'state', r.state,
                    'createdAt', r.created_at
                  ) ORDER BY r.created_at DESC)
@@ -87,7 +87,7 @@ export async function listStarredJarsWithRooms(
       updatedAt: (row.updated_at as Date).toISOString(),
     };
     const activeRooms = (row.active_rooms as StarredJarActiveRoom[]).map((r) => ({
-      code: r.code,
+      id: r.id,
       state: r.state,
       createdAt: r.createdAt,
     }));

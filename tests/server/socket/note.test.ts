@@ -12,17 +12,17 @@ import type { NoteStatePayload, ServerToClientEvents } from "../../../src/shared
 let pool: pg.Pool;
 let testUserId: string;
 let testJarId: string;
-let testRoomCode: string;
+let testRoomId: string;
 let httpServer: ReturnType<typeof createServer>;
 let port: number;
 
-function connectClient(roomCode: string, displayName: string): ClientSocket {
+function connectClient(roomId: string, displayName: string): ClientSocket {
   const client = ioClient(`http://localhost:${port}`, {
     autoConnect: false,
     transports: ["websocket"],
   });
   client.on("connect", () => {
-    client.emit("room:join", roomCode, displayName);
+    client.emit("room:join", roomId, displayName);
   });
   return client;
 }
@@ -83,7 +83,7 @@ beforeEach(async () => {
   await pool.query("DELETE FROM notes WHERE jar_id = $1", [testJarId]);
   await pool.query("DELETE FROM rooms WHERE jar_id = $1", [testJarId]);
   const room = await roomQueries.createRoom(pool, { jarId: testJarId });
-  testRoomCode = room.code;
+  testRoomId = room.id;
 });
 
 const clients: ClientSocket[] = [];
@@ -112,7 +112,7 @@ describe("note:state on join", () => {
     });
     await noteQueries.updateNoteState(pool, pulled.id, "pulled");
 
-    const client = connectClient(testRoomCode, "Alice");
+    const client = connectClient(testRoomId, "Alice");
     clients.push(client);
 
     const noteStatePromise = waitForEvent(client, "note:state");
@@ -128,7 +128,7 @@ describe("note:state on join", () => {
 
 describe("anonymous user restrictions", () => {
   it("rejects note:add from anonymous user", async () => {
-    const client = connectClient(testRoomCode, "Guest");
+    const client = connectClient(testRoomId, "Guest");
     clients.push(client);
 
     client.connect();
@@ -144,7 +144,7 @@ describe("anonymous user restrictions", () => {
   it("rejects note:pull from anonymous user", async () => {
     await noteQueries.createNote(pool, { jarId: testJarId, text: "In jar", style: "sticky" });
 
-    const client = connectClient(testRoomCode, "Guest");
+    const client = connectClient(testRoomId, "Guest");
     clients.push(client);
 
     client.connect();
@@ -165,7 +165,7 @@ describe("anonymous user restrictions", () => {
     });
     await noteQueries.updateNoteState(pool, note.id, "pulled");
 
-    const client = connectClient(testRoomCode, "Guest");
+    const client = connectClient(testRoomId, "Guest");
     clients.push(client);
 
     client.connect();

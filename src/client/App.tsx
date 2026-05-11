@@ -64,18 +64,17 @@ function App() {
     setError,
   });
 
-  // joinFromCode = "user landed on /CODE". Resolves the code as a jar
-  // share-code first (post-expand: most URLs are now share-codes), opening
-  // or joining the active room on that jar. Falls back to the legacy
-  // joinRoom(code) socket path if the code doesn't match a share-code —
-  // covers bookmarks to old `/<roomCode>` URLs during the rollout window.
+  // joinFromCode = "user landed on /CODE or typed one into the form".
+  // Resolves the code as a jar share-code and opens-or-joins the active
+  // room on that jar via openRoomForJar. Failure modes surface through
+  // setError (existing ErrorToast).
   const joinFromCode = useMemo(
     () =>
       createJoinFromCode({
         openRoomForJar: jarActions.openRoomForJar,
-        joinRoom: socketApi.joinRoom,
+        setError,
       }),
-    [jarActions.openRoomForJar, socketApi.joinRoom],
+    [jarActions.openRoomForJar, setError],
   );
 
   const initialCode = useRoomUrlSync({
@@ -117,6 +116,7 @@ function App() {
           user={user}
           socketApi={socketApi}
           jarActions={jarActions}
+          joinFromCode={joinFromCode}
           onRequestSignIn={openSignIn}
           initialCode={initialCode}
         />
@@ -143,12 +143,14 @@ function LandingScreen({
   user,
   socketApi,
   jarActions,
+  joinFromCode,
   onRequestSignIn,
   initialCode,
 }: {
   user: SessionUser;
   socketApi: SocketApi;
   jarActions: ReturnType<typeof useJarActions>;
+  joinFromCode: (code: string, displayName: string) => void | Promise<void>;
   onRequestSignIn: () => void;
   initialCode: string | null;
 }) {
@@ -158,8 +160,11 @@ function LandingScreen({
   const displayName = user?.displayName ?? "Host";
   const { isCreating, openRoomForJar, createJarAndJoin, cloneTemplateAndJoin } = jarActions;
 
+  // MyJarsDrawer's "Join active room" passes the room UUID directly — no
+  // share-code resolution needed since the drawer already knows the active
+  // room's id.
   const joinExistingRoom = useCallback(
-    (code: string) => joinRoom(code, displayName),
+    (roomId: string) => joinRoom(roomId, displayName),
     [joinRoom, displayName],
   );
 
@@ -172,7 +177,7 @@ function LandingScreen({
         onRequestSignIn={onRequestSignIn}
       />
       <RoomCodeEntry
-        onJoin={joinRoom}
+        onJoin={joinFromCode}
         onCreateJar={user ? createJarAndJoin : undefined}
         onCloneTemplate={user ? cloneTemplateAndJoin : undefined}
         isJoining={isJoining}
