@@ -166,6 +166,38 @@ describe("GET /api/jars/by-share-code/:code", () => {
     const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
     expect(res.status).toBe(403);
   });
+
+  it("strips allowedEmails / allowedUserIds from the response (owner-managed PII)", async () => {
+    // A code-holder who passes canJoinJar shouldn't see every email the
+    // owner allowlisted. They can already join — the list itself adds
+    // nothing for them and is a privacy leak.
+    const jar = await createTestJar({ allowedEmails: ["rest-friend@example.com"] });
+    asFriend();
+    const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
+    expect(res.status).toBe(200);
+    expect(res.body.config.allowedEmails).toBeUndefined();
+    expect(res.body.config.allowedUserIds).toBeUndefined();
+    // Non-PII config fields stay (sanity check we didn't strip too much).
+    expect(res.body.config.noteVisibility).toBeDefined();
+  });
+
+  it("returns activeRoomId=null when a previously-open room is now closed", async () => {
+    // Defends against future code paths that surface non-open rooms — the
+    // share-code lookup must hand back null so the client falls through to
+    // openRoomForJar (which respects the partial-unique index).
+    const jar = await createTestJar();
+    asOwner();
+    const roomRes = await request(app).post("/api/rooms").send({ jarId: jar.id });
+    expect(roomRes.status).toBe(201);
+
+    await pool.query("UPDATE rooms SET state = 'closed', closed_at = now() WHERE id = $1", [
+      roomRes.body.id,
+    ]);
+
+    const res = await request(app).get(`/api/jars/by-share-code/${jar.shareCode}`);
+    expect(res.status).toBe(200);
+    expect(res.body.activeRoomId).toBeNull();
+  });
 });
 
 describe("GET /api/jars/:id — allowlist", () => {
@@ -337,7 +369,7 @@ describe("POST /api/rooms — access + one-active", () => {
     expect(first.status).toBe(201);
     const second = await request(app).post("/api/rooms").send({ jarId: jar.id });
     expect(second.status).toBe(200);
-    expect(second.body.code).toBe(first.body.code);
+    expect(second.body.id).toBe(first.body.id);
   });
 });
 

@@ -13,7 +13,7 @@ import { logger } from "./logger";
 import { buildDefaultLimiters } from "./middleware/rateLimit";
 import { applySecurityHeaders } from "./middleware/securityHeaders";
 import { buildCompression, buildSoundsStatic } from "./middleware/static";
-import { wwwRedirect } from "./middleware/wwwRedirect";
+import { buildWwwRedirect } from "./middleware/wwwRedirect";
 import { createHealthRouter } from "./routes/health";
 import { jarRouter } from "./routes/jars";
 import { noteRouter } from "./routes/notes";
@@ -23,13 +23,22 @@ import { setSocketServer } from "./socket/broadcaster";
 import { buildSocketServer } from "./socket/server";
 
 const clientUrl = process.env.CLIENT_URL ?? "http://localhost:5175";
+// Derive the canonical apex once at startup. The www-redirect middleware
+// is pinned to this exact host — reflecting `req.hostname` would let an
+// attacker open-redirect via `Host: www.evil.com`.
+const apexHost = new URL(clientUrl).hostname;
 
 const app = express();
 const httpServer = createServer(app);
 
+// Trust the first proxy hop (Fly's edge) so `req.hostname` honors
+// `X-Forwarded-Host`. Without this, www→apex canonicalization can't see
+// the original host on prod.
+app.set("trust proxy", 1);
+
 // Canonicalize host first — short-circuits www.* requests before they pass
 // through CORS, body parsing, or auth so OAuth only ever sees the apex.
-app.use(wwwRedirect);
+app.use(buildWwwRedirect(apexHost));
 
 applySecurityHeaders(app);
 app.use(buildCompression());
@@ -76,7 +85,7 @@ app.use(
 
 // Per-method rate limiting: reads get the generous budget (300/min), writes
 // the stricter one (60/min). Applying a single limiter at the mount prefix
-// would count `GET /api/rooms/:code` (a join lookup) against the write quota.
+// would count `GET /api/jars/by-share-code/:code` (a join lookup) against the write quota.
 const limiters = buildDefaultLimiters(sharedRedis);
 const readOrWrite = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const handler = req.method === "GET" || req.method === "HEAD" ? limiters.read : limiters.write;

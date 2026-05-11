@@ -1,14 +1,12 @@
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 /**
- * Canonicalize the host: any incoming request to `www.<something>` 308s to
- * `https://<something><path>` so the OAuth flow only ever sees one origin.
- *
- * Why this exists: `BETTER_AUTH_URL` and `CLIENT_URL` are single values, so
- * the session cookie domain is pinned to whichever host we picked. A user
- * arriving on the www variant would either fail OAuth (cookie scope mismatch)
- * or sign in to a parallel session that doesn't follow them back to the apex.
- * One canonical host avoids both.
+ * Build a middleware that 308s `www.<apex>` to `https://<apex><path>` so the
+ * OAuth flow only ever sees one origin. Bound to a single apex on purpose:
+ * an earlier version reflected `req.hostname` directly into the Location
+ * header, which would let an attacker setting `Host: www.evil.com` open-
+ * redirect a victim. With the apex pinned at startup, any unexpected Host
+ * just falls through.
  *
  * Status 308 (not 301) preserves the request method — a 301 silently
  * downgrades POST to GET, which would break any future webhook or form on
@@ -19,12 +17,13 @@ import type { NextFunction, Request, Response } from "express";
  * upgrades http to https before requests reach app code; emitting a http
  * Location would trigger a second round-trip.
  */
-export function wwwRedirect(req: Request, res: Response, next: NextFunction): void {
-  const host = req.hostname;
-  if (!host.startsWith("www.")) {
-    next();
-    return;
-  }
-  const apex = host.slice("www.".length);
-  res.redirect(308, `https://${apex}${req.originalUrl}`);
+export function buildWwwRedirect(apex: string): RequestHandler {
+  const wwwHost = `www.${apex}`;
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.hostname !== wwwHost) {
+      next();
+      return;
+    }
+    res.redirect(308, `https://${apex}${req.originalUrl}`);
+  };
 }

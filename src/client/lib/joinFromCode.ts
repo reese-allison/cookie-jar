@@ -35,7 +35,9 @@ interface JarLookupResponse {
 export function createJoinFromCode({ joinRoom, openRoomForJar, setError }: JoinFromCodeDeps) {
   return async (code: string, displayName: string): Promise<void> => {
     try {
-      const res = await fetch(`/api/jars/by-share-code/${code}`, { credentials: "include" });
+      const res = await fetch(`/api/jars/by-share-code/${encodeURIComponent(code)}`, {
+        credentials: "include",
+      });
       if (res.ok) {
         const jar = (await res.json()) as JarLookupResponse;
         if (jar.activeRoomId) {

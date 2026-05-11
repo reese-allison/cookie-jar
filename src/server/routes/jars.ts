@@ -185,7 +185,16 @@ jarRouter.get("/by-share-code/:code", attachUser, async (req: AuthenticatedReque
       return;
     }
     const activeRooms = await roomQueries.listActiveRoomsForJar(pool, jar.id);
-    res.json({ ...jar, activeRoomId: activeRooms[0]?.id ?? null });
+    // Strip allowlist PII before responding: a code-holder who isn't the
+    // owner shouldn't see every email/user-id the owner invited. Anyone
+    // who passes canJoinJar can already join — they don't need the full
+    // list to do so.
+    const { allowedEmails: _ae, allowedUserIds: _aui, ...sanitizedConfig } = jar.config ?? {};
+    res.json({
+      ...jar,
+      config: sanitizedConfig,
+      activeRoomId: activeRooms[0]?.id ?? null,
+    });
   } catch (err) {
     logger.error({ err }, "GET /api/jars/by-share-code/:code failed");
     res.status(500).json({ error: "Failed to look up jar" });

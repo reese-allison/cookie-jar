@@ -84,6 +84,34 @@ describe("createJoinFromCode", () => {
     expect(setError.mock.calls[0][0]).toMatch(/allowlist|invite/i);
   });
 
+  it("encodeURIComponents the code before putting it in the URL (defense in depth)", async () => {
+    // parseCodeFromPath already restricts to ROOM_CODE_CHARS, but the
+    // helper shouldn't trust its caller — encoding ensures a future caller
+    // that bypasses the parser can't smuggle path segments.
+    mockFetch(200, { id: "jar-x", shareCode: "ABCDEFG", activeRoomId: null });
+    const openRoomForJar = vi.fn().mockResolvedValue(undefined);
+    const join = createJoinFromCode({ joinRoom: vi.fn(), openRoomForJar, setError: vi.fn() });
+    await join("../etc/passwd", "Alex");
+    const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toBe("/api/jars/by-share-code/..%2Fetc%2Fpasswd");
+    expect(url).not.toContain("/etc/passwd");
+  });
+
+  it("recovers gracefully if openRoomForJar throws (defense in depth)", async () => {
+    // openRoomForJar (from useJarActions) currently catches its own
+    // errors and never rethrows. This test pins that contract from
+    // joinFromCode's side: if a future refactor of openRoomForJar lets
+    // a rejection escape, joinFromCode's outer try/catch swallows it
+    // gracefully and surfaces a friendly setError — no console-noisy
+    // unhandled-promise-rejection bubbling up to the user.
+    mockFetch(200, { id: "jar-x", shareCode: "ABCDEFG", activeRoomId: null });
+    const openRoomForJar = vi.fn().mockRejectedValue(new Error("simulated breakage"));
+    const setError = vi.fn();
+    const join = createJoinFromCode({ joinRoom: vi.fn(), openRoomForJar, setError });
+    await expect(join("ABCDEFG", "Alex")).resolves.toBeUndefined();
+    expect(setError).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces a network failure as a connection error", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));
     const openRoomForJar = vi.fn();
