@@ -172,7 +172,7 @@ export function RoomView({
     <div className="room-view">
       <header className="room-header">
         {jarName && <span className="room-jar-name">{jarName}</span>}
-        <CopyableRoomCode code={room.code} />
+        <CopyableRoomCode code={room.shareCode ?? room.code} />
         {isNarrow ? (
           <div className="room-actions room-actions--collapsed">
             <RoomHeaderMenu>{actions}</RoomHeaderMenu>
