@@ -14,29 +14,37 @@ export function SealedNoteStack({ count, revealAt }: SealedNoteStackProps) {
   const remaining = Math.max(0, revealAt - count);
   return (
     <div className="sealed-stack" aria-live="polite">
+      {/* Define the card art once and reference it from each stacked card via
+          <use>, instead of re-emitting the full 5-element SVG tree per card.
+          The cards are visually identical, so a high reveal threshold no
+          longer multiplies the DOM node count. */}
+      <svg width="0" height="0" className="sealed-stack__defs" aria-hidden="true">
+        <symbol id="sealed-card-art" viewBox="0 0 48 56">
+          {/* Paper body */}
+          <rect
+            x="2"
+            y="4"
+            width="44"
+            height="48"
+            rx="3"
+            fill="#fef9c3"
+            stroke="#d9c47a"
+            strokeWidth="1"
+          />
+          {/* Fold lines suggesting a folded note */}
+          <line x1="2" y1="20" x2="46" y2="20" stroke="#d9c47a" strokeWidth="0.6" />
+          <line x1="2" y1="36" x2="46" y2="36" stroke="#d9c47a" strokeWidth="0.6" />
+          {/* Wax seal */}
+          <circle cx="24" cy="28" r="5" fill="#c67b5c" />
+          <circle cx="24" cy="28" r="2.2" fill="#b5651d" />
+        </symbol>
+      </svg>
       <div className="sealed-stack__cards" aria-hidden="true">
         {Array.from({ length: count }, (_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: decorative stack, order is the identity
           <div key={i} className="sealed-card" style={{ "--i": i } as React.CSSProperties}>
             <svg viewBox="0 0 48 56" className="sealed-card__svg" aria-hidden="true">
-              <title>Sealed note</title>
-              {/* Paper body */}
-              <rect
-                x="2"
-                y="4"
-                width="44"
-                height="48"
-                rx="3"
-                fill="#fef9c3"
-                stroke="#d9c47a"
-                strokeWidth="1"
-              />
-              {/* Fold lines suggesting a folded note */}
-              <line x1="2" y1="20" x2="46" y2="20" stroke="#d9c47a" strokeWidth="0.6" />
-              <line x1="2" y1="36" x2="46" y2="36" stroke="#d9c47a" strokeWidth="0.6" />
-              {/* Wax seal */}
-              <circle cx="24" cy="28" r="5" fill="#c67b5c" />
-              <circle cx="24" cy="28" r="2.2" fill="#b5651d" />
+              <use href="#sealed-card-art" />
             </svg>
           </div>
         ))}

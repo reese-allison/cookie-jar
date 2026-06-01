@@ -247,25 +247,31 @@ describe("note queries", () => {
   });
 
   describe("createNoteIfUnderCap", () => {
-    it("inserts when the jar has room", async () => {
-      const note = await noteQueries.createNoteIfUnderCap(
+    it("inserts when the jar has room and returns the derived post-insert count", async () => {
+      const created = await noteQueries.createNoteIfUnderCap(
         pool,
         { jarId: testJarId, text: "under cap", style: "sticky" },
         3,
       );
-      expect(note).not.toBeNull();
-      expect(note?.text).toBe("under cap");
+      expect(created).not.toBeNull();
+      expect(created?.note.text).toBe("under cap");
+      // Count is derived from the advisory-locked transaction, not a second
+      // query — it must equal the authoritative in_jar count.
+      expect(created?.inJarCount).toBe(1);
+      expect(created?.inJarCount).toBe(
+        await noteQueries.countNotesByState(pool, testJarId, "in_jar"),
+      );
     });
 
     it("returns null when at the cap", async () => {
       await noteQueries.createNote(pool, { jarId: testJarId, text: "a", style: "sticky" });
       await noteQueries.createNote(pool, { jarId: testJarId, text: "b", style: "sticky" });
-      const note = await noteQueries.createNoteIfUnderCap(
+      const created = await noteQueries.createNoteIfUnderCap(
         pool,
         { jarId: testJarId, text: "c", style: "sticky" },
         2,
       );
-      expect(note).toBeNull();
+      expect(created).toBeNull();
       expect(await noteQueries.countNotesByState(pool, testJarId, "in_jar")).toBe(2);
     });
 

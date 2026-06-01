@@ -1,4 +1,4 @@
-import type { Note, NoteState, NoteStyle } from "@shared/types";
+import type { JarConfig, Note, NoteState, NoteStyle } from "@shared/types";
 import type pg from "pg";
 import { type Queryable, withTransaction } from "../transaction";
 
@@ -78,7 +78,7 @@ export async function createNoteIfUnderCap(
   pool: pg.Pool,
   input: CreateNoteInput,
   cap: number,
-): Promise<Note | null> {
+): Promise<{ note: Note; inJarCount: number } | null> {
   return withTransaction(pool, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.jarId]);
     const countRes = await client.query<{ n: number }>(
@@ -94,13 +94,38 @@ export async function createNoteIfUnderCap(
       `),
       [input.jarId, input.text, input.url ?? null, input.style, input.authorId],
     );
-    return rowToNote(rows[0]);
+    // Derive the post-insert in_jar count from the count we already took
+    // under the advisory lock instead of issuing a second COUNT(*). The
+    // insert moved the jar from `n` to `n + 1` in_jar notes.
+    return { note: rowToNote(rows[0]), inJarCount: countRes.rows[0].n + 1 };
   });
 }
 
-export async function getNoteById(pool: pg.Pool, noteId: string): Promise<Note | null> {
-  const { rows } = await pool.query(`${SELECT_NOTE_WITH_AUTHOR} WHERE n.id = $1`, [noteId]);
-  return rows.length > 0 ? rowToNote(rows[0]) : null;
+/**
+ * Fetch a note together with its owning jar's authorization fields in a single
+ * round-trip. The REST owner-curation routes (PATCH/DELETE) need both the note
+ * and the jar's owner_id + config (for the lock check); the JOIN avoids the
+ * note-lookup-then-jar-lookup two-query dance those handlers used to do.
+ */
+export async function getNoteWithJar(
+  pool: pg.Pool,
+  noteId: string,
+): Promise<{ note: Note; jar: { ownerId: string; config: JarConfig } } | null> {
+  const { rows } = await pool.query(
+    `SELECT n.*, u.display_name AS author_display_name,
+            j.owner_id AS jar_owner_id, j.config AS jar_config
+     FROM notes n
+     JOIN jars j ON j.id = n.jar_id
+     LEFT JOIN users u ON u.id = n.author_id
+     WHERE n.id = $1`,
+    [noteId],
+  );
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    note: rowToNote(row),
+    jar: { ownerId: row.jar_owner_id as string, config: row.jar_config as JarConfig },
+  };
 }
 
 export async function listNotesByJar(
@@ -352,13 +377,4 @@ export async function bulkTransitionPulled(
          RETURNING id`;
   const { rows } = await pool.query(sql, [jarId]);
   return rows.map((r) => r.id as string);
-}
-
-/**
- * Kept as a thin wrapper for the idle-close path so existing callers don't
- * change. New code should call `bulkTransitionPulled` directly.
- */
-export async function resetPulledNotesForJar(pool: pg.Pool, jarId: string): Promise<number> {
-  const ids = await bulkTransitionPulled(pool, jarId, "in_jar");
-  return ids.length;
 }

@@ -29,7 +29,7 @@ function isShareCodeCollision(err: unknown): boolean {
   return c !== undefined && JAR_SHARE_CODE_UNIQUE_CONSTRAINTS.has(c);
 }
 
-interface ActiveRoomSummary {
+export interface ActiveRoomSummary {
   id: string;
   state: RoomState;
   createdAt: string;
@@ -38,6 +38,21 @@ interface ActiveRoomSummary {
 interface OwnedJarWithRooms extends Jar {
   activeRooms: ActiveRoomSummary[];
 }
+
+// Correlated subquery folding a jar's non-closed rooms into a JSON array.
+// Assumes the jars table is aliased `j`. Shared by listOwnedJarsWithRooms and
+// starredJars' listStarredJarsWithRooms so the two can't drift apart.
+export const ACTIVE_ROOMS_SUBQUERY = `
+  COALESCE(
+    (SELECT json_agg(json_build_object(
+              'id', r.id,
+              'state', r.state,
+              'createdAt', r.created_at
+            ) ORDER BY r.created_at DESC)
+     FROM rooms r
+     WHERE r.jar_id = j.id AND r.state != 'closed'),
+    '[]'::json
+  ) AS active_rooms`;
 
 // Appearance + config are stored as JSONB with DB-side defaults; PATCH and
 // POST callers may supply only the fields they mean to set. Partial<> keeps
@@ -71,6 +86,21 @@ function rowToJar(row: Record<string, unknown>): Jar {
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
   };
+}
+
+/**
+ * Map a row from a `SELECT j.*, ${ACTIVE_ROOMS_SUBQUERY}` query to a jar with
+ * its non-closed rooms attached. Shared by the owned- and starred-jar lists.
+ */
+export function rowToJarWithActiveRooms(
+  row: Record<string, unknown>,
+): Jar & { activeRooms: ActiveRoomSummary[] } {
+  const activeRooms = (row.active_rooms as ActiveRoomSummary[]).map((r) => ({
+    id: r.id,
+    state: r.state,
+    createdAt: r.createdAt,
+  }));
+  return { ...rowToJar(row), activeRooms };
 }
 
 export async function createJar(db: Queryable, input: CreateJarInput): Promise<Jar> {
@@ -136,33 +166,13 @@ export async function listOwnedJarsWithRooms(
   ownerId: string,
 ): Promise<OwnedJarWithRooms[]> {
   const { rows } = await pool.query(
-    `SELECT j.*,
-       COALESCE(
-         (SELECT json_agg(json_build_object(
-                   'id', r.id,
-                   'state', r.state,
-                   'createdAt', r.created_at
-                 ) ORDER BY r.created_at DESC)
-          FROM rooms r
-          WHERE r.jar_id = j.id AND r.state != 'closed'),
-         '[]'::json
-       ) AS active_rooms
+    `SELECT j.*, ${ACTIVE_ROOMS_SUBQUERY}
      FROM jars j
      WHERE j.owner_id = $1
      ORDER BY j.created_at DESC`,
     [ownerId],
   );
-  return rows.map((row) => {
-    const jar = rowToJar(row);
-    const activeRooms = (
-      row.active_rooms as Array<{
-        id: string;
-        state: RoomState;
-        createdAt: string;
-      }>
-    ).map((r) => ({ id: r.id, state: r.state, createdAt: r.createdAt }));
-    return { ...jar, activeRooms };
-  });
+  return rows.map(rowToJarWithActiveRooms);
 }
 
 export async function listTemplates(pool: pg.Pool): Promise<Jar[]> {

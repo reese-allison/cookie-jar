@@ -3,7 +3,9 @@ import { logger } from "../logger";
 
 const CHANNEL = "cookie-jar:cache-invalidate";
 
-export type InvalidationScope = "room" | "jar";
+// Only "jar" is ever published/handled — the "room" variant was a leftover
+// from the retired room:lock path. Narrowed so a dead branch can't creep back.
+export type InvalidationScope = "jar";
 
 export interface InvalidationMessage {
   scope: InvalidationScope;

@@ -25,8 +25,8 @@ export async function closeEmptyRoom(
 ): Promise<void> {
   if (jarId) {
     fireAndForget(
-      noteQueries.resetPulledNotesForJar(pool, jarId),
-      "closeEmptyRoom.resetPulledNotesForJar",
+      noteQueries.bulkTransitionPulled(pool, jarId, "in_jar"),
+      "closeEmptyRoom.resetPulledNotes",
     );
   }
   fireAndForget(deps.presenceStore.clearRoom(roomId), "closeEmptyRoom.clearRoom");

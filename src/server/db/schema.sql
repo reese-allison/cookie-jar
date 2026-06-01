@@ -77,6 +77,9 @@ CREATE TABLE jars (
 
 CREATE INDEX idx_jars_owner_id ON jars(owner_id);
 CREATE INDEX idx_jars_share_code ON jars(share_code);
+-- Partial index for listTemplates (WHERE is_template ORDER BY name) — only
+-- template rows are indexed, serving both the filter and the sort.
+CREATE INDEX idx_jars_templates ON jars (name) WHERE is_template;
 
 -- Notes (items inside jars)
 CREATE TABLE notes (
