@@ -79,27 +79,6 @@ export async function buildNoteStateShared(
   };
 }
 
-/**
- * Builds the compact `note:state` payload broadcast on `jar:refresh`. We
- * deliberately omit `pulledNotes` — it's unchanged by jar edits and costs
- * ~200 bytes/note × members. Clients must preserve their existing pulled
- * notes when this field is absent (see NoteStatePayload doc).
- *
- * Retained as a thin sync wrapper for tests that assert the shape without
- * needing a real sealed store.
- */
-export function buildJarRefreshPayload(
-  jar: { config: JarConfig | null; appearance: JarAppearance | null; name?: string | null },
-  inJarCount: number,
-) {
-  return {
-    inJarCount,
-    jarName: jar.name ?? undefined,
-    jarConfig: jar.config ?? undefined,
-    jarAppearance: jar.appearance ?? undefined,
-  };
-}
-
 const COLORS = [
   "#FF6B6B",
   "#4ECDC4",

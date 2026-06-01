@@ -74,8 +74,10 @@ function App() {
         joinRoom: socketApi.joinRoom,
         openRoomForJar: jarActions.openRoomForJar,
         setError,
+        isAuthenticated: Boolean(user),
+        requestSignIn: openSignIn,
       }),
-    [socketApi.joinRoom, jarActions.openRoomForJar, setError],
+    [socketApi.joinRoom, jarActions.openRoomForJar, setError, user, openSignIn],
   );
 
   const initialCode = useRoomUrlSync({

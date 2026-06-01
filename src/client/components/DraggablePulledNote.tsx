@@ -3,7 +3,6 @@ import type { Note } from "@shared/types";
 import { memo, useEffect } from "react";
 import type { Rect } from "../hooks/hitTest";
 import { type DropTarget, useDragNote } from "../hooks/useDragNote";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useNoteStore } from "../stores/noteStore";
 import { PulledNote } from "./PulledNote";
 
@@ -50,7 +49,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
   const peerDrag = useNoteStore((s) => s.peerDrags.get(note.id));
   const isPeerDragging = peerDrag !== undefined;
 
-  const { bind, style, isDragging } = useDragNote({
+  const { bind, style, isDragging, reduceMotion } = useDragNote({
     enabled: draggable && !isPeerDragging,
     jarRect,
     discardRect,
@@ -73,8 +72,6 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
     },
   });
 
-  const reduceMotion = useReducedMotion();
-
   // Separate spring to mirror a peer's drag smoothly.
   const [peerStyle, peerApi] = useSpring(() => ({
     x: 0,
@@ -93,6 +90,19 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
     }
   }, [peerDrag, peerApi, reduceMotion]);
 
+  // Identical across all three render branches — only the wrapper differs.
+  // Hoisted so the prop list can't drift between branches.
+  const noteEl = (
+    <PulledNote
+      note={note}
+      showPulledBy={showPulledBy}
+      showAuthors={showAuthors}
+      canDiscard={canDiscard}
+      onDiscard={onDiscard}
+      onReturn={onReturn}
+    />
+  );
+
   if (isPeerDragging) {
     return (
       <animated.div
@@ -104,14 +114,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
           touchAction: "none",
         }}
       >
-        <PulledNote
-          note={note}
-          showPulledBy={showPulledBy}
-          showAuthors={showAuthors}
-          canDiscard={canDiscard}
-          onDiscard={onDiscard}
-          onReturn={onReturn}
-        />
+        {noteEl}
       </animated.div>
     );
   }
@@ -119,18 +122,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
   // Static render for touch devices: no drag bind, no grab cursor, default
   // touch-action so vertical scrolling inside the notes area still works.
   if (!draggable) {
-    return (
-      <div className="draggable-pulled-note">
-        <PulledNote
-          note={note}
-          showPulledBy={showPulledBy}
-          showAuthors={showAuthors}
-          canDiscard={canDiscard}
-          onDiscard={onDiscard}
-          onReturn={onReturn}
-        />
-      </div>
-    );
+    return <div className="draggable-pulled-note">{noteEl}</div>;
   }
 
   return (
@@ -146,14 +138,7 @@ export const DraggablePulledNote = memo(function DraggablePulledNote({
         cursor: "grab",
       }}
     >
-      <PulledNote
-        note={note}
-        showPulledBy={showPulledBy}
-        showAuthors={showAuthors}
-        canDiscard={canDiscard}
-        onDiscard={onDiscard}
-        onReturn={onReturn}
-      />
+      {noteEl}
     </animated.div>
   );
 });

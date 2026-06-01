@@ -13,7 +13,6 @@ import type { IdleTimeoutManager } from "./idleTimeout";
 import { socketRateLimiter } from "./rateLimit";
 import {
   attachMember,
-  buildJarRefreshPayload,
   buildNoteStateShared,
   buildRoomState,
   determineRole,
@@ -26,9 +25,6 @@ import {
   validateRoomJoin,
 } from "./roomHelpers";
 import type { TypedServer } from "./server";
-
-// Re-exported for tests that still import from here.
-export { buildJarRefreshPayload };
 
 /**
  * Run the per-join sequence (kick prior session, atomic presence insert with

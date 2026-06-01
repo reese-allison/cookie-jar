@@ -120,7 +120,7 @@ export function registerNoteHandlers(
 
       // Atomic cap check — serialized per-jar via pg_advisory_xact_lock so
       // two concurrent sockets can't each see count = MAX-1 and both insert.
-      const note = await noteQueries.createNoteIfUnderCap(
+      const created = await noteQueries.createNoteIfUnderCap(
         pool,
         {
           jarId,
@@ -131,16 +131,14 @@ export function registerNoteHandlers(
         },
         MAX_NOTES_PER_JAR,
       );
-      if (!note) {
+      if (!created) {
         socket.emit("room:error", `Jar is full (${MAX_NOTES_PER_JAR} notes max)`);
         return;
       }
-      // Send the authoritative post-insert count — cheaper than a second
-      // COUNT(*) because we can derive it from the advisory-locked
-      // transaction that just ran. Clients rely on this to update the jar
-      // label.
-      const inJarCount = await noteQueries.countNotesByState(pool, jarId, "in_jar");
-      io.to(roomId).emit("note:added", note, inJarCount);
+      // The authoritative post-insert count comes back from the same
+      // advisory-locked transaction — no second COUNT(*). Clients rely on it
+      // to update the jar label.
+      io.to(roomId).emit("note:added", created.note, created.inJarCount);
     }),
   );
 

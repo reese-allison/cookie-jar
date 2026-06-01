@@ -1,14 +1,9 @@
-import type { Jar, JarAppearance, JarConfig, RoomState } from "@shared/types";
+import type { Jar } from "@shared/types";
 import type pg from "pg";
-
-interface StarredJarActiveRoom {
-  id: string;
-  state: RoomState;
-  createdAt: string;
-}
+import { ACTIVE_ROOMS_SUBQUERY, type ActiveRoomSummary, rowToJarWithActiveRooms } from "./jars";
 
 interface StarredJar extends Jar {
-  activeRooms: StarredJarActiveRoom[];
+  activeRooms: ActiveRoomSummary[];
 }
 
 /** Upsert — starring a jar you've already starred is a no-op (refreshes timestamp). */
@@ -56,41 +51,12 @@ export async function listStarredJarsWithRooms(
   userId: string,
 ): Promise<StarredJar[]> {
   const { rows } = await pool.query(
-    `SELECT j.*,
-       COALESCE(
-         (SELECT json_agg(json_build_object(
-                   'id', r.id,
-                   'state', r.state,
-                   'createdAt', r.created_at
-                 ) ORDER BY r.created_at DESC)
-          FROM rooms r
-          WHERE r.jar_id = j.id AND r.state != 'closed'),
-         '[]'::json
-       ) AS active_rooms
+    `SELECT j.*, ${ACTIVE_ROOMS_SUBQUERY}
      FROM user_starred_jars s
      JOIN jars j ON j.id = s.jar_id
      WHERE s.user_id = $1
      ORDER BY s.starred_at DESC`,
     [userId],
   );
-  return rows.map((row: Record<string, unknown>) => {
-    const jar: Jar = {
-      id: row.id as string,
-      ownerId: row.owner_id as string,
-      name: row.name as string,
-      appearance: row.appearance as JarAppearance,
-      config: row.config as JarConfig,
-      shareCode: row.share_code as string,
-      isTemplate: row.is_template as boolean,
-      isPublic: row.is_public as boolean,
-      createdAt: (row.created_at as Date).toISOString(),
-      updatedAt: (row.updated_at as Date).toISOString(),
-    };
-    const activeRooms = (row.active_rooms as StarredJarActiveRoom[]).map((r) => ({
-      id: r.id,
-      state: r.state,
-      createdAt: r.createdAt,
-    }));
-    return { ...jar, activeRooms };
-  });
+  return rows.map(rowToJarWithActiveRooms);
 }

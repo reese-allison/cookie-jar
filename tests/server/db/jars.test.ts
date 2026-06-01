@@ -102,6 +102,11 @@ describe("jar queries", () => {
       config: TEST_CONFIG,
     });
 
+    // updated_at is set via Postgres now() (transaction start time). On a fast
+    // runner the create and update can land in the same millisecond, making the
+    // ISO timestamps compare equal at ms precision — a flake. A short delay
+    // guarantees the clock advances so the refresh is observable.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     const updated = await jarQueries.updateJar(pool, jar.id, { name: "New Name" });
     expect(updated?.name).toBe("New Name");
     expect(updated?.updatedAt).not.toBe(jar.updatedAt);

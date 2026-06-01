@@ -21,8 +21,17 @@ beforeEach(() => {
   social.mockReset();
   anonymous.mockReset();
   isDev = true;
+  window.history.replaceState({}, "", "/");
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/");
+});
+
+/** Full-path callback the buttons should hand to better-auth. */
+function currentCallback() {
+  return window.location.origin + window.location.pathname + window.location.search;
+}
 
 describe("AuthButtons", () => {
   it("renders Google and Discord sign-in buttons", () => {
@@ -36,7 +45,7 @@ describe("AuthButtons", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in with google/i }));
     expect(social).toHaveBeenCalledWith({
       provider: "google",
-      callbackURL: window.location.origin,
+      callbackURL: currentCallback(),
     });
   });
 
@@ -47,8 +56,20 @@ describe("AuthButtons", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in with discord/i }));
     expect(social).toHaveBeenCalledWith({
       provider: "discord",
-      callbackURL: window.location.origin,
+      callbackURL: currentCallback(),
     });
+  });
+
+  it("preserves the room path in the callback URL so OAuth returns to the room being viewed", () => {
+    // A viewer who hits "Sign in to participate" from inside /ABCDEFG must land
+    // back on /ABCDEFG after OAuth — not the bare origin. The callback is read
+    // at click time (not module load) so client-side navigation is reflected.
+    window.history.pushState({}, "", "/ABCDEFG");
+    render(<AuthButtons />);
+    fireEvent.click(screen.getByRole("button", { name: /sign in with google/i }));
+    const { callbackURL } = social.mock.calls[0][0] as { callbackURL: string };
+    expect(callbackURL).toBe(`${window.location.origin}/ABCDEFG`);
+    expect(callbackURL.endsWith("/ABCDEFG")).toBe(true);
   });
 
   it("renders the anonymous dev button when IS_DEV is true", () => {

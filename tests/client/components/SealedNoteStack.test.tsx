@@ -23,6 +23,19 @@ describe("SealedNoteStack", () => {
     expect(container.querySelectorAll(".sealed-card")).toHaveLength(3);
   });
 
+  it("defines the card art once and references it from every card via <use>", () => {
+    // The decorative SVG is identical per card, so it's defined a single time
+    // as a <symbol> and each card points at it — keeps the DOM node count flat
+    // as the reveal threshold grows.
+    const { container } = render(<SealedNoteStack count={4} revealAt={4} />);
+    expect(container.querySelectorAll("symbol#sealed-card-art")).toHaveLength(1);
+    const uses = container.querySelectorAll(".sealed-card use");
+    expect(uses).toHaveLength(4);
+    for (const u of uses) {
+      expect(u.getAttribute("href")).toBe("#sealed-card-art");
+    }
+  });
+
   it("shows the count over the reveal threshold", () => {
     render(<SealedNoteStack count={2} revealAt={5} />);
     expect(screen.getByText("2")).toBeDefined();

@@ -95,5 +95,8 @@ export function useDragNote({
     { filterTaps: true },
   );
 
-  return { bind, style, isDragging: isActive };
+  // Surface reduceMotion so callers that also need it (e.g. a peer-drag
+  // spring) reuse this one subscription instead of mounting a second
+  // matchMedia listener per note.
+  return { bind, style, isDragging: isActive, reduceMotion };
 }

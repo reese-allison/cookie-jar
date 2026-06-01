@@ -38,7 +38,7 @@ function isNoteState(v: unknown): v is NoteState {
  * Text edits and non-destructive state flips don't need this. Writes the
  * response and returns false when locked.
  */
-function assertUnlocked(jar: Jar, res: Response): boolean {
+function assertUnlocked(jar: Pick<Jar, "config">, res: Response): boolean {
   if (jar.config?.locked) {
     res.status(409).json({ error: "Jar is locked — unlock in settings first" });
     return false;
@@ -92,7 +92,7 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       return;
     }
     if (!assertUnlocked(jar, res)) return;
-    const note = await noteQueries.createNoteIfUnderCap(
+    const created = await noteQueries.createNoteIfUnderCap(
       pool,
       {
         jarId,
@@ -103,11 +103,11 @@ noteRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) => {
       },
       MAX_NOTES_PER_JAR,
     );
-    if (!note) {
+    if (!created) {
       res.status(400).json({ error: `Jar is full (${MAX_NOTES_PER_JAR} notes max)` });
       return;
     }
-    res.status(201).json(note);
+    res.status(201).json(created.note);
     // Push the new inJarCount to every live room so peers see the add without
     // waiting for a jar:refresh.
     fireAndForget(broadcastJarNoteState(jarId), "broadcastJarNoteState(create)");
@@ -150,13 +150,12 @@ noteRouter.get("/", attachUser, async (req: AuthenticatedRequest, res) => {
 noteRouter.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const noteId = asString(req.params.id);
-    const note = await noteQueries.getNoteById(pool, noteId);
-    if (!note) {
+    const found = await noteQueries.getNoteWithJar(pool, noteId);
+    if (!found) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
-    const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== getUser(req).id) {
+    if (found.jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can edit notes" });
       return;
     }
@@ -200,19 +199,18 @@ noteRouter.patch("/:id/state", requireAuth, async (req: AuthenticatedRequest, re
       return;
     }
     const noteId = asString(req.params.id);
-    const note = await noteQueries.getNoteById(pool, noteId);
-    if (!note) {
+    const found = await noteQueries.getNoteWithJar(pool, noteId);
+    if (!found) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
-    const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== getUser(req).id) {
+    if (found.jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can change note state" });
       return;
     }
     // Lock only blocks transitions that effectively add or discard (lock
     // says "no additions, no discards"). Pulled↔in_jar swaps are curation.
-    if (state === "discarded" && !assertUnlocked(jar, res)) return;
+    if (state === "discarded" && !assertUnlocked(found.jar, res)) return;
     const updated = await noteQueries.updateNoteState(pool, noteId, state);
     res.json(updated);
     // Peers need to see state flips (pulled → discarded etc.) live.
@@ -239,17 +237,17 @@ noteRouter.patch("/:id/state", requireAuth, async (req: AuthenticatedRequest, re
 noteRouter.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const noteId = asString(req.params.id);
-    const note = await noteQueries.getNoteById(pool, noteId);
-    if (!note) {
+    const found = await noteQueries.getNoteWithJar(pool, noteId);
+    if (!found) {
       res.status(404).json({ error: "Note not found" });
       return;
     }
-    const jar = await jarQueries.getJarById(pool, note.jarId);
-    if (jar?.ownerId !== getUser(req).id) {
+    if (found.jar.ownerId !== getUser(req).id) {
       res.status(403).json({ error: "Only the jar owner can delete notes" });
       return;
     }
-    if (!assertUnlocked(jar, res)) return;
+    if (!assertUnlocked(found.jar, res)) return;
+    const note = found.note;
     await noteQueries.deleteNote(pool, noteId);
     res.status(204).send();
     // If the note was on the table, emit note:updated with a non-pulled state
