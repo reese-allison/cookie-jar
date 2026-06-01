@@ -1,13 +1,18 @@
 /**
  * @vitest-environment jsdom
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJoinFromCode } from "../../../src/client/lib/joinFromCode";
 
 const origFetch = globalThis.fetch;
 
+beforeEach(() => {
+  window.history.replaceState({}, "", "/");
+});
+
 afterEach(() => {
   globalThis.fetch = origFetch;
+  window.history.replaceState({}, "", "/");
   vi.restoreAllMocks();
 });
 
@@ -19,6 +24,18 @@ function mockFetch(status: number, body: unknown) {
   } as Response);
 }
 
+/** Sensible authed defaults; override per test. */
+function makeDeps(overrides: Partial<Parameters<typeof createJoinFromCode>[0]> = {}) {
+  return {
+    joinRoom: vi.fn(),
+    openRoomForJar: vi.fn().mockResolvedValue(undefined),
+    setError: vi.fn(),
+    isAuthenticated: true,
+    requestSignIn: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("createJoinFromCode", () => {
   it("socket-joins the active room directly when one is open (anon-safe path)", async () => {
     // Regression guard: the share-code rollout used to funnel every URL
@@ -28,60 +45,88 @@ describe("createJoinFromCode", () => {
     // socket-join directly and the auth-gated create path stays out of
     // the picture.
     mockFetch(200, { id: "jar-abc", shareCode: "ABCDEFG", activeRoomId: "room-active-uuid" });
-    const openRoomForJar = vi.fn();
-    const joinRoom = vi.fn();
-    const setError = vi.fn();
+    const deps = makeDeps({ isAuthenticated: false });
 
-    const join = createJoinFromCode({ openRoomForJar, joinRoom, setError });
+    const join = createJoinFromCode(deps);
     await join("ABCDEFG", "Alex");
 
-    expect(joinRoom).toHaveBeenCalledWith("room-active-uuid", "Alex");
-    expect(openRoomForJar).not.toHaveBeenCalled();
-    expect(setError).not.toHaveBeenCalled();
+    expect(deps.joinRoom).toHaveBeenCalledWith("room-active-uuid", "Alex");
+    expect(deps.openRoomForJar).not.toHaveBeenCalled();
+    expect(deps.requestSignIn).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
   });
 
   it("opens a new room when activeRoomId is null and the user is authed", async () => {
     mockFetch(200, { id: "jar-abc", shareCode: "ABCDEFG", activeRoomId: null });
-    const openRoomForJar = vi.fn().mockResolvedValue(undefined);
-    const joinRoom = vi.fn();
-    const setError = vi.fn();
+    const deps = makeDeps({ isAuthenticated: true });
 
-    const join = createJoinFromCode({ openRoomForJar, joinRoom, setError });
+    const join = createJoinFromCode(deps);
     await join("ABCDEFG", "Alex");
 
-    expect(openRoomForJar).toHaveBeenCalledWith("jar-abc");
-    expect(joinRoom).not.toHaveBeenCalled();
-    expect(setError).not.toHaveBeenCalled();
+    expect(deps.openRoomForJar).toHaveBeenCalledWith("jar-abc");
+    expect(deps.joinRoom).not.toHaveBeenCalled();
+    expect(deps.requestSignIn).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it("prompts sign-in (not a dead-end 401) when activeRoomId is null and the visitor is anonymous", async () => {
+    // Opening a brand-new room is auth-gated (POST /api/rooms → 401 for anon).
+    // Rather than firing that doomed request and surfacing a bare error toast,
+    // an anonymous deep-linker should be offered sign-in directly.
+    mockFetch(200, { id: "jar-abc", shareCode: "ABCDEFG", activeRoomId: null });
+    const deps = makeDeps({ isAuthenticated: false });
+
+    const join = createJoinFromCode(deps);
+    await join("ABCDEFG", "Alex");
+
+    expect(deps.requestSignIn).toHaveBeenCalledTimes(1);
+    expect(deps.openRoomForJar).not.toHaveBeenCalled();
+    expect(deps.joinRoom).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it("writes the share-code into the URL before prompting sign-in so the OAuth round-trip returns to the room", async () => {
+    // The visitor may have typed the code into the landing form while the URL
+    // still reads "/". For AuthButtons' full-path callbackURL to bring them
+    // back to *this* jar after OAuth, the code has to be in the address bar
+    // before the modal opens. We write the canonical shareCode, not the raw
+    // (possibly lowercase) input.
+    mockFetch(200, { id: "jar-abc", shareCode: "ABCDEFG", activeRoomId: null });
+    const deps = makeDeps({ isAuthenticated: false });
+
+    const join = createJoinFromCode(deps);
+    await join("abcdefg", "Alex");
+
+    expect(window.location.pathname).toBe("/ABCDEFG");
+    expect(deps.requestSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a 404 as a friendly error (stale link)", async () => {
     mockFetch(404, { error: "Jar not found" });
-    const openRoomForJar = vi.fn();
-    const joinRoom = vi.fn();
-    const setError = vi.fn();
+    const deps = makeDeps();
 
-    const join = createJoinFromCode({ openRoomForJar, joinRoom, setError });
+    const join = createJoinFromCode(deps);
     await join("DEADCODE", "Alex");
 
-    expect(openRoomForJar).not.toHaveBeenCalled();
-    expect(joinRoom).not.toHaveBeenCalled();
-    expect(setError).toHaveBeenCalledTimes(1);
-    expect(setError.mock.calls[0][0]).toMatch(/no longer works|deleted/i);
+    expect(deps.openRoomForJar).not.toHaveBeenCalled();
+    expect(deps.joinRoom).not.toHaveBeenCalled();
+    expect(deps.requestSignIn).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledTimes(1);
+    expect(deps.setError.mock.calls[0][0]).toMatch(/no longer works|deleted/i);
   });
 
   it("surfaces a 403 as an allowlist-miss error", async () => {
     mockFetch(403, { error: "Not authorized" });
-    const openRoomForJar = vi.fn();
-    const joinRoom = vi.fn();
-    const setError = vi.fn();
+    const deps = makeDeps();
 
-    const join = createJoinFromCode({ openRoomForJar, joinRoom, setError });
+    const join = createJoinFromCode(deps);
     await join("ABCDEFG", "Alex");
 
-    expect(openRoomForJar).not.toHaveBeenCalled();
-    expect(joinRoom).not.toHaveBeenCalled();
-    expect(setError).toHaveBeenCalledTimes(1);
-    expect(setError.mock.calls[0][0]).toMatch(/allowlist|invite/i);
+    expect(deps.openRoomForJar).not.toHaveBeenCalled();
+    expect(deps.joinRoom).not.toHaveBeenCalled();
+    expect(deps.requestSignIn).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledTimes(1);
+    expect(deps.setError.mock.calls[0][0]).toMatch(/allowlist|invite/i);
   });
 
   it("encodeURIComponents the code before putting it in the URL (defense in depth)", async () => {
@@ -89,8 +134,8 @@ describe("createJoinFromCode", () => {
     // helper shouldn't trust its caller — encoding ensures a future caller
     // that bypasses the parser can't smuggle path segments.
     mockFetch(200, { id: "jar-x", shareCode: "ABCDEFG", activeRoomId: null });
-    const openRoomForJar = vi.fn().mockResolvedValue(undefined);
-    const join = createJoinFromCode({ joinRoom: vi.fn(), openRoomForJar, setError: vi.fn() });
+    const deps = makeDeps({ isAuthenticated: true });
+    const join = createJoinFromCode(deps);
     await join("../etc/passwd", "Alex");
     const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toBe("/api/jars/by-share-code/..%2Fetc%2Fpasswd");
@@ -105,25 +150,26 @@ describe("createJoinFromCode", () => {
     // gracefully and surfaces a friendly setError — no console-noisy
     // unhandled-promise-rejection bubbling up to the user.
     mockFetch(200, { id: "jar-x", shareCode: "ABCDEFG", activeRoomId: null });
-    const openRoomForJar = vi.fn().mockRejectedValue(new Error("simulated breakage"));
-    const setError = vi.fn();
-    const join = createJoinFromCode({ joinRoom: vi.fn(), openRoomForJar, setError });
+    const deps = makeDeps({
+      isAuthenticated: true,
+      openRoomForJar: vi.fn().mockRejectedValue(new Error("simulated breakage")),
+    });
+    const join = createJoinFromCode(deps);
     await expect(join("ABCDEFG", "Alex")).resolves.toBeUndefined();
-    expect(setError).toHaveBeenCalledTimes(1);
+    expect(deps.setError).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a network failure as a connection error", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));
-    const openRoomForJar = vi.fn();
-    const joinRoom = vi.fn();
-    const setError = vi.fn();
+    const deps = makeDeps();
 
-    const join = createJoinFromCode({ openRoomForJar, joinRoom, setError });
+    const join = createJoinFromCode(deps);
     await join("ABCDEFG", "Alex");
 
-    expect(openRoomForJar).not.toHaveBeenCalled();
-    expect(joinRoom).not.toHaveBeenCalled();
-    expect(setError).toHaveBeenCalledTimes(1);
-    expect(setError.mock.calls[0][0]).toMatch(/connection|reach the server/i);
+    expect(deps.openRoomForJar).not.toHaveBeenCalled();
+    expect(deps.joinRoom).not.toHaveBeenCalled();
+    expect(deps.requestSignIn).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledTimes(1);
+    expect(deps.setError.mock.calls[0][0]).toMatch(/connection|reach the server/i);
   });
 });
