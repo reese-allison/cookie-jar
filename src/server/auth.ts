@@ -82,6 +82,17 @@ export const auth = betterAuth({
     discord: {
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
       clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+      // better-auth's Discord provider defaults the authorize URL to
+      // `prompt=none` (our Google URL sends no prompt param). Per Discord's
+      // OAuth2 docs `prompt=none` skips the authorization screen — but it is
+      // documented to break Discord's iOS in-app browser: completing the OAuth
+      // redirect with `prompt=none` leaves the Discord iOS app unresponsive,
+      // requiring a force-restart (discord/discord-api-docs#6160). Cookie Jar
+      // room links are shared inside Discord and opened on iPhones, so this is
+      // the most likely reason Discord sign-in fails on iPhone while Google
+      // (no prompt param) works. `consent` is Discord's normal behavior and
+      // simply omits the parameter that triggers the bug.
+      prompt: "consent",
     },
   },
   user: {
