@@ -70,15 +70,30 @@ describe("roomStore", () => {
   // Lock state moved to jarConfig.locked — see noteStore + JarSettingsDrawer.
   // There's nothing lock-related on the roomStore anymore.
 
+  it("sets and clears a notice (the non-error/success toast channel)", () => {
+    useRoomStore.getState().setNotice("Copied!");
+    expect(useRoomStore.getState().notice).toBe("Copied!");
+    useRoomStore.getState().setNotice(null);
+    expect(useRoomStore.getState().notice).toBeNull();
+  });
+
+  it("does not touch isJoining when setting a notice (unlike setError)", () => {
+    useRoomStore.getState().setJoining(true);
+    useRoomStore.getState().setNotice("Copied!");
+    expect(useRoomStore.getState().isJoining).toBe(true);
+  });
+
   it("resets to initial state", () => {
     useRoomStore.getState().setRoom(TEST_ROOM);
     useRoomStore.getState().setConnected(true);
     useRoomStore.getState().setCursor({ x: 1, y: 2, userId: "u" });
+    useRoomStore.getState().setNotice("Copied!");
 
     useRoomStore.getState().reset();
 
     expect(useRoomStore.getState().room).toBeNull();
     expect(useRoomStore.getState().isConnected).toBe(false);
     expect(useRoomStore.getState().cursors.size).toBe(0);
+    expect(useRoomStore.getState().notice).toBeNull();
   });
 });

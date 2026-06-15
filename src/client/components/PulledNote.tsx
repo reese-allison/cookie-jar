@@ -1,5 +1,7 @@
 import type { Note } from "@shared/types";
 import { memo } from "react";
+import { useRoomStore } from "../stores/roomStore";
+import { CopyButton } from "./CopyButton";
 
 interface PulledNoteProps {
   note: Note;
@@ -22,6 +24,9 @@ export const PulledNote = memo(function PulledNote({
   onDiscard,
   onReturn,
 }: PulledNoteProps) {
+  // Stable selector — confirms the copy via the app toast without threading a
+  // prop down from RoomView through DraggablePulledNote.
+  const setNotice = useRoomStore((s) => s.setNotice);
   return (
     <article className={`pulled-note pulled-note--${note.style}`} aria-label={`Note: ${note.text}`}>
       <p className="pulled-note__text">{note.text}</p>
@@ -37,6 +42,11 @@ export const PulledNote = memo(function PulledNote({
         <p className="pulled-note__pulled-by">Pulled by {note.pulledBy}</p>
       )}
       <div className="pulled-note__actions">
+        <CopyButton
+          value={note.text}
+          label="Copy note text"
+          onCopied={() => setNotice("Copied!")}
+        />
         <button type="button" onClick={() => onReturn(note.id)} aria-label="Return to jar">
           Return
         </button>

@@ -2369,6 +2369,34 @@ main:has(.room-view) {
 }
 
 /* ==========================================================================
+   Notice toast — transient success/info (e.g. "Copied!")
+   ========================================================================== */
+
+/* Bottom-center (snackbar) so it never collides with the top-center error
+   toast, and success-green to read as confirmation rather than alarm. */
+.notice-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  max-width: min(480px, calc(100vw - 2rem));
+  padding: 0.625rem 1rem;
+  background: var(--color-success);
+  color: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lifted);
+  animation: fadeInUp 200ms ease-out;
+  font-family: "Nunito", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.notice-toast__text {
+  display: block;
+}
+
+/* ==========================================================================
    Error Boundary — full-screen fallback
    ========================================================================== */
 

@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorToast } from "./components/ErrorToast";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { KofiWidget } from "./components/KofiWidget";
+import { NoticeToast } from "./components/NoticeToast";
 import { RoomCodeEntry } from "./components/RoomCodeEntry";
 import { useJarActions } from "./hooks/useJarActions";
 import { useRoomUrlSync } from "./hooks/useRoomUrlSync";
@@ -103,6 +104,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ErrorToast />
+      <NoticeToast />
       {room ? (
         <Suspense fallback={<LoadingShell />}>
           <InRoomScreen

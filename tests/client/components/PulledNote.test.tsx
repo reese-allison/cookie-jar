@@ -1,9 +1,10 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PulledNote } from "../../../src/client/components/PulledNote";
+import { useRoomStore } from "../../../src/client/stores/roomStore";
 import type { Note } from "../../../src/shared/types";
 
 const TEST_NOTE: Note = {
@@ -16,7 +17,22 @@ const TEST_NOTE: Note = {
   updatedAt: new Date().toISOString(),
 };
 
-afterEach(cleanup);
+const writeText = vi.fn();
+
+beforeEach(() => {
+  writeText.mockReset();
+  writeText.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
+  useRoomStore.getState().reset();
+});
+
+afterEach(() => {
+  cleanup();
+  useRoomStore.getState().reset();
+});
 
 describe("PulledNote component", () => {
   it("renders the note text", () => {
@@ -44,6 +60,25 @@ describe("PulledNote component", () => {
     render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={onReturn} />);
     fireEvent.click(screen.getByRole("button", { name: /return/i }));
     expect(onReturn).toHaveBeenCalledWith("note-1");
+  });
+
+  it("renders a copy button for the note", () => {
+    render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /copy/i })).toBeDefined();
+  });
+
+  it("copies the note body text — not the URL — to the clipboard", () => {
+    const noteWithUrl = { ...TEST_NOTE, url: "https://example.com" };
+    render(<PulledNote note={noteWithUrl} onDiscard={vi.fn()} onReturn={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /copy/i }));
+    expect(writeText).toHaveBeenCalledWith("Go for a hike");
+    expect(writeText).not.toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("shows a 'Copied!' toast notice after a successful copy", async () => {
+    render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /copy/i }));
+    await waitFor(() => expect(useRoomStore.getState().notice).toBe("Copied!"));
   });
 
   it("has accessible buttons that can be focused with keyboard", () => {
