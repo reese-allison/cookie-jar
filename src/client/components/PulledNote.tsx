@@ -47,12 +47,50 @@ export const PulledNote = memo(function PulledNote({
           label="Copy note text"
           onCopied={() => setNotice("Copied!")}
         />
-        <button type="button" onClick={() => onReturn(note.id)} aria-label="Return to jar">
-          Return
+        <button
+          type="button"
+          className="btn--icon"
+          onClick={() => onReturn(note.id)}
+          aria-label="Return to jar"
+          title="Return to jar"
+        >
+          {/* u-turn arrow — put the note back in the jar */}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 15 3 9l6-6" />
+            <path d="M3 9h12a6 6 0 0 1 0 12h-3" />
+          </svg>
         </button>
         {canDiscard && (
-          <button type="button" onClick={() => onDiscard(note.id)} aria-label="Discard">
-            Discard
+          <button
+            type="button"
+            className="btn--icon pulled-note__discard"
+            onClick={() => onDiscard(note.id)}
+            aria-label="Discard"
+            title="Discard"
+          >
+            {/* Feather "trash-2" */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
           </button>
         )}
       </div>

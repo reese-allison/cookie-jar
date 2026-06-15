@@ -37,6 +37,13 @@ describe("CopyButton", () => {
     await waitFor(() => expect(onCopied).toHaveBeenCalledTimes(1));
   });
 
+  it("renders an icon (svg) rather than a visible text label, keeping the accessible name", () => {
+    render(<CopyButton value="x" label="Copy note" />);
+    const btn = screen.getByRole("button", { name: /copy note/i });
+    expect(btn.querySelector("svg")).not.toBeNull();
+    expect(btn.textContent?.trim()).toBe("");
+  });
+
   it("does not throw when the clipboard API is unavailable", () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     render(<CopyButton value="x" label="Copy note" />);

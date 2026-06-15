@@ -81,6 +81,15 @@ describe("PulledNote component", () => {
     await waitFor(() => expect(useRoomStore.getState().notice).toBe("Copied!"));
   });
 
+  it("renders the action buttons as icons (svg) while keeping their accessible labels", () => {
+    render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={vi.fn()} />);
+    for (const name of [/copy/i, /return/i, /discard/i]) {
+      const btn = screen.getByRole("button", { name });
+      expect(btn.querySelector("svg")).not.toBeNull();
+      expect(btn.textContent?.trim()).toBe("");
+    }
+  });
+
   it("has accessible buttons that can be focused with keyboard", () => {
     render(<PulledNote note={TEST_NOTE} onDiscard={vi.fn()} onReturn={vi.fn()} />);
     const returnBtn = screen.getByRole("button", { name: /return/i });
